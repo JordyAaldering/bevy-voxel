@@ -1,7 +1,23 @@
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy_inspector_egui::{bevy_egui::EguiPlugin, prelude::*, quick::ResourceInspectorPlugin};
 
-const MOVE_SPEED: f32 = 5.0;
-const MOUSE_SENSITIVITY: f32 = 0.002;
+#[derive(Resource, Reflect, InspectorOptions)]
+#[reflect(Resource, InspectorOptions)]
+struct CameraSettings {
+    #[inspector(min = 0.1, max = 20.0)]
+    move_speed: f32,
+    #[inspector(min = 0.0001, max = 0.01)]
+    mouse_sensitivity: f32,
+}
+
+impl Default for CameraSettings {
+    fn default() -> Self {
+        Self {
+            move_speed: 5.0,
+            mouse_sensitivity: 0.002,
+        }
+    }
+}
 
 fn main() {
     App::new()
@@ -13,6 +29,11 @@ fn main() {
             }),
             ..default()
         }))
+        .init_resource::<CameraSettings>()
+        .register_type::<CameraSettings>()
+        .add_plugins(EguiPlugin::default())
+        // .add_plugins(WorldInspectorPlugin::new())
+        .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
         .add_systems(Startup, setup)
         .add_systems(Update, (toggle_cursor, move_camera))
         .run();
@@ -61,15 +82,16 @@ fn move_camera(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
+    settings: Res<CameraSettings>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
     // Look
     let delta = mouse_motion.delta;
 
     if delta != Vec2::ZERO {
-        camera.rotate_y(-delta.x * MOUSE_SENSITIVITY);
+        camera.rotate_y(-delta.x * settings.mouse_sensitivity);
 
-        camera.rotate_local_x(-delta.y * MOUSE_SENSITIVITY);
+        camera.rotate_local_x(-delta.y * settings.mouse_sensitivity);
     }
 
     // Move
@@ -95,6 +117,6 @@ fn move_camera(
     }
 
     if movement != Vec3::ZERO {
-        camera.translation += MOVE_SPEED * time.delta_secs() * movement.normalize();
+        camera.translation += settings.move_speed * time.delta_secs() * movement.normalize();
     }
 }

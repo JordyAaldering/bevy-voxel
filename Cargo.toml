@@ -11,4 +11,5 @@ opt-level = 3
 
 [dependencies]
 bevy = { version = "0.19", features = ["dynamic_linking"] }
+bevy-inspector-egui = "0.37"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
