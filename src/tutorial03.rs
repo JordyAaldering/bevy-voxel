@@ -81,7 +81,7 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // Voxel
-    let voxel = Voxel::from_xyz(0, 0, 0);
+    let voxel = Voxel::from_coordinates(0, 0, 0);
     commands.spawn((
         Transform::from_translation(voxel.origin()),
         Mesh3d(meshes.add(generate_voxel_mesh(&voxel))),
@@ -96,15 +96,15 @@ fn setup(
             ..default()
         },
         Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, -0.8, -0.5, 0.0)
+            Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
         ),
     ));
 
     // Camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(1.0, 2.0, 4.0)
-            .looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(1.5, 2.0, 4.0)
+            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
 }
 

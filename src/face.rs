@@ -24,58 +24,60 @@ impl Face {
     ///
     /// The quad is defined by the origin and direction of the face:
     /// ```text
-    ///     (0,1,1)-------------------(1,1,1)
+    ///     (0,1,0)-------------------(1,1,0)
     ///          /|                  /|
     ///         / |                 / |
     ///        /  |                /  |
-    /// (0,1,0)-------------(1,1,0)   |
+    /// (0,1,1)-------------(1,1,1)   |
     ///       |   |               |   |
     ///       |   |               |   |
     ///       |   |               |   |
-    ///       |  (0,0,1)----------|--(1,0,1)
+    ///       |  (0,0,0)----------|--(1,0,0)
     ///       | /                 | /
     ///       |/                  |/
-    /// (0,0,0)-------------------(1,0,0)
+    /// (0,0,1)-------------------(1,0,1)
     /// ```
+    ///
+    /// Note that, in Bevy, the Z axis points forward, so the going back decreases the Z coordinate.
     pub fn vertices(&self) -> [Vec3; 4] {
         let o = self.origin;
 
         match self.direction {
             FaceDirection::Right => [
-                o + Vec3::X,
                 o + Vec3::X + Vec3::Z,
-                o + Vec3::X + Vec3::Y,
+                o + Vec3::X,
                 o + Vec3::X + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y,
             ],
             FaceDirection::Left => [
-                o + Vec3::Z,
                 o,
-                o + Vec3::Y + Vec3::Z,
+                o + Vec3::Z,
                 o + Vec3::Y,
+                o + Vec3::Y + Vec3::Z,
             ],
             FaceDirection::Top => [
-                o + Vec3::Y,
-                o + Vec3::X + Vec3::Y,
                 o + Vec3::Y + Vec3::Z,
                 o + Vec3::X + Vec3::Y + Vec3::Z,
+                o + Vec3::Y,
+                o + Vec3::X + Vec3::Y,
             ],
             FaceDirection::Bottom => [
-                o + Vec3::Z,
-                o + Vec3::X + Vec3::Z,
                 o,
                 o + Vec3::X,
+                o + Vec3::Z,
+                o + Vec3::X + Vec3::Z,
             ],
             FaceDirection::Front => [
-                o,
-                o + Vec3::X,
-                o + Vec3::Y,
-                o + Vec3::X + Vec3::Y,
+                o + Vec3::Z,
+                o + Vec3::X + Vec3::Z,
+                o + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y + Vec3::Z,
             ],
             FaceDirection::Back => [
-                o + Vec3::X + Vec3::Z,
-                o + Vec3::Z,
-                o + Vec3::X + Vec3::Y + Vec3::Z,
-                o + Vec3::Y + Vec3::Z,
+                o + Vec3::X,
+                o,
+                o + Vec3::X + Vec3::Y,
+                o + Vec3::Y,
             ],
         }
     }
@@ -119,6 +121,7 @@ impl Face {
 }
 
 impl FaceDirection {
+    /// Returns an outward-facing normal vector for the face direction.
     pub fn normal(&self) -> Vec3 {
         match self {
             Self::Right  => vec3( 1.0, 0.0, 0.0),

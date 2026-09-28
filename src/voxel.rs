@@ -8,7 +8,7 @@ pub struct Voxel {
 }
 
 impl Voxel {
-    pub fn from_xyz(x: usize, y: usize, z: usize) -> Self {
+    pub fn from_coordinates(x: usize, y: usize, z: usize) -> Self {
         Self { x, y, z }
     }
 
