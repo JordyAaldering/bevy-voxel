@@ -22,12 +22,20 @@ impl Face {
 
     /// Returns the four vertices of the quad.
     ///
-    /// Vertices are ordered as viewed from outside the voxel:
+    /// The quad is defined by the origin and direction of the face:
     /// ```text
-    /// 2-----3
-    /// |     |
-    /// |     |
-    /// 0-----1
+    ///     (0,1,1)-------------------(1,1,1)
+    ///          /|                  /|
+    ///         / |                 / |
+    ///        /  |                /  |
+    /// (0,1,0)-------------(1,1,0)   |
+    ///       |   |               |   |
+    ///       |   |               |   |
+    ///       |   |               |   |
+    ///       |  (0,0,1)----------|--(1,0,1)
+    ///       | /                 | /
+    ///       |/                  |/
+    /// (0,0,0)-------------------(1,0,0)
     /// ```
     pub fn vertices(&self) -> [Vec3; 4] {
         let o = self.origin;
@@ -73,8 +81,25 @@ impl Face {
     }
 
     /// Returns the vertex indices for the quad (two triangles).
+    ///
+    /// Vertices are ordered as viewed from outside the voxel:
+    /// ```text
+    /// 2----3
+    /// | \  |
+    /// |  \ |
+    /// 0----1
+    /// ```
     pub fn indices(&self, start: u32) -> [u32; 6] {
-        [start, start + 1, start + 2, start + 2, start + 1, start + 3]
+        [
+            // First triangle
+            start + 0, // Bottom left
+            start + 1, // Bottom right
+            start + 2, // Top left
+            // Second triangle
+            start + 2, // Top left
+            start + 1, // Bottom right
+            start + 3, // Top right
+        ]
     }
 
     /// Returns the normals of the 4 corners of the quad.

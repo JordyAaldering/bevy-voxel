@@ -2,7 +2,7 @@ mod face;
 mod voxel;
 
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::ResourceInspectorPlugin};
+use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
 use crate::face::{Face, FaceDirection};
 use crate::voxel::Voxel;
@@ -38,26 +38,13 @@ fn main() {
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_plugins(EguiPlugin::default())
+        .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
         .add_systems(Startup, setup)
         .add_systems(Update, (toggle_cursor, move_camera))
         .run();
 }
 
-/// ```text
-///     (0,1,1)-------------------(1,1,1)
-///          /|                  /|
-///         / |                 / |
-///        /  |                /  |
-/// (0,1,0)-------------(1,1,0)   |
-///       |   |               |   |
-///       |   |               |   |
-///       |   |               |   |
-///       |  (0,0,1)----------|--(1,0,1)
-///       | /                 | /
-///       |/                  |/
-/// (0,0,0)-------------------(1,0,0)
-/// ```
 fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
     let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
     let mut indices = Vec::with_capacity(6 * 6); // 6 indices per face (2 triangles)
@@ -116,7 +103,7 @@ fn setup(
     // Camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 1.5, 5.0)
+        Transform::from_xyz(1.0, 2.0, 4.0)
             .looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
