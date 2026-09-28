@@ -3,6 +3,14 @@ name = "voxel"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "tutorial01"
+path = "src/tutorial01.rs"
+
+[[bin]]
+name = "tutorial02"
+path = "src/tutorial02.rs"
+
 [profile.dev]
 opt-level = 1
 

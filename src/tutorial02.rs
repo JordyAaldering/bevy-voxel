@@ -1,5 +1,5 @@
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{bevy_egui::EguiPlugin, prelude::*, quick::ResourceInspectorPlugin};
+use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::ResourceInspectorPlugin};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -32,7 +32,6 @@ fn main() {
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_plugins(EguiPlugin::default())
-        // .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
         .add_systems(Startup, setup)
         .add_systems(Update, (toggle_cursor, move_camera))
@@ -58,23 +57,38 @@ fn setup(
             shadow_maps_enabled: true,
             ..default()
         },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, -0.5, 0.0)),
+        Transform::from_rotation(
+            Quat::from_euler(EulerRot::XYZ, -0.8, -0.5, 0.0)
+        ),
     ));
 
     // Camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 1.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 1.5, 5.0)
+            .looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
 
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+    mut egui_context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
 ) {
+    // Release the cursor when escape is pressed
     if keyboard.just_pressed(KeyCode::Escape) {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
+    }
+
+    // Recapture when a click occurs outside egui
+    if cursor.grab_mode == CursorGrabMode::None
+        && mouse.just_pressed(MouseButton::Left)
+        && !egui_context.get_mut().egui_wants_pointer_input()
+    {
+        cursor.grab_mode = CursorGrabMode::Locked;
+        cursor.visible = false;
     }
 }
 
@@ -83,8 +97,14 @@ fn move_camera(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
     settings: Res<CameraSettings>,
+    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
+    // Don't move the camera if app is unfocused
+    if cursor.grab_mode == CursorGrabMode::None {
+        return;
+    }
+
     // Look
     let delta = mouse_motion.delta;
 
