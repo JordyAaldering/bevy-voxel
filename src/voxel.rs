@@ -1,4 +1,4 @@
-use bevy::transform::components::Transform;
+use bevy::math::Vec3;
 
 #[derive(Clone, Debug)]
 pub struct Voxel {
@@ -12,7 +12,8 @@ impl Voxel {
         Self { x, y, z }
     }
 
-    pub fn transform(&self) -> Transform {
-        Transform::from_xyz(self.x as f32, self.y as f32, self.z as f32)
+    /// Front-bottom-left corner of the voxel: (0,0,0) in this voxel's local space.
+    pub fn origin(&self) -> Vec3 {
+        Vec3::new(self.x as f32, self.y as f32, self.z as f32)
     }
 }

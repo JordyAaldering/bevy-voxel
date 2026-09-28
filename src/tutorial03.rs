@@ -1,8 +1,10 @@
+mod face;
 mod voxel;
 
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::ResourceInspectorPlugin};
 
+use crate::face::{Face, FaceDirection};
 use crate::voxel::Voxel;
 
 #[derive(Resource, Reflect, InspectorOptions)]
@@ -42,68 +44,47 @@ fn main() {
         .run();
 }
 
+/// ```text
+///     (0,1,1)-------------------(1,1,1)
+///          /|                  /|
+///         / |                 / |
+///        /  |                /  |
+/// (0,1,0)-------------(1,1,0)   |
+///       |   |               |   |
+///       |   |               |   |
+///       |   |               |   |
+///       |  (0,0,1)----------|--(1,0,1)
+///       | /                 | /
+///       |/                  |/
+/// (0,0,0)-------------------(1,0,0)
+/// ```
 fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
-    let x = voxel.x as f32;
-    let y = voxel.y as f32;
-    let z = voxel.z as f32;
+    let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
+    let mut indices = Vec::with_capacity(6 * 6); // 6 indices per face (2 triangles)
+    let mut normals = Vec::with_capacity(6 * 4); // 4 normals per face
+    let mut uvs = Vec::with_capacity(6 * 4); // 4 uvs per face
 
-    let positions: Vec<[f32; 3]> = vec![
-        // Right
-        [x + 1.0, y,       z      ],
-        [x + 1.0, y,       z + 1.0],
-        [x + 1.0, y + 1.0, z + 1.0],
-        [x + 1.0, y + 1.0, z      ],
-        // Left
-        [x, y,       z + 1.0],
-        [x, y,       z      ],
-        [x, y + 1.0, z      ],
-        [x, y + 1.0, z + 1.0],
-        // Top
-        [x,       y + 1.0, z      ],
-        [x + 1.0, y + 1.0, z      ],
-        [x + 1.0, y + 1.0, z + 1.0],
-        [x,       y + 1.0, z + 1.0],
-        // Bottom
-        [x,       y, z + 1.0],
-        [x + 1.0, y, z + 1.0],
-        [x + 1.0, y, z      ],
-        [x,       y, z      ],
-        // Front
-        [x + 1.0, y,       z + 1.0],
-        [x,       y,       z + 1.0],
-        [x,       y + 1.0, z + 1.0],
-        [x + 1.0, y + 1.0, z + 1.0],
-        // Back
-        [x,       y,       z],
-        [x + 1.0, y,       z],
-        [x + 1.0, y + 1.0, z],
-        [x,       y + 1.0, z],
-    ];
+    for face in [
+        FaceDirection::Right,
+        FaceDirection::Left,
+        FaceDirection::Top,
+        FaceDirection::Bottom,
+        FaceDirection::Front,
+        FaceDirection::Back,
+    ] {
+        let face = Face::new(voxel.origin(), face);
 
-    let normals: Vec<[f32; 3]> = [
-        [ 1.0,  0.0,  0.0], // Right
-        [-1.0,  0.0,  0.0], // Left
-        [ 0.0,  1.0,  0.0], // Top
-        [ 0.0, -1.0,  0.0], // Bottom
-        [ 0.0,  0.0,  1.0], // Front
-        [ 0.0,  0.0, -1.0], // Back
-    ]
-        .into_iter()
-        .flat_map(|normal| [normal, normal, normal, normal])
-        .collect();
-
-    let indices: Vec<u32> = vec![
-         0,  1,  2,  0,  2,  3, // Right
-         4,  5,  6,  4,  6,  7, // Left
-         8,  9, 10,  8, 10, 11, // Top
-        12, 13, 14, 12, 14, 15, // Bottom
-        16, 17, 18, 16, 18, 19, // Front
-        20, 21, 22, 20, 22, 23, // Back
-    ];
+        let start = vertices.len() as u32;
+        vertices.extend_from_slice(&face.vertices());
+        indices.extend_from_slice(&face.indices(start));
+        normals.extend_from_slice(&face.normals());
+        uvs.extend_from_slice(&face.uvs());
+    }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_indices(Indices::U32(indices))
 }
 
@@ -115,7 +96,7 @@ fn setup(
     // Voxel
     let voxel = Voxel::from_xyz(0, 0, 0);
     commands.spawn((
-        voxel.transform(),
+        Transform::from_translation(voxel.origin()),
         Mesh3d(meshes.add(generate_voxel_mesh(&voxel))),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
     ));
