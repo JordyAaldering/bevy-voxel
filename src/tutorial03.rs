@@ -1,3 +1,4 @@
+mod spawn;
 mod face;
 mod voxel;
 
@@ -40,9 +41,29 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
-        .add_systems(Startup, setup)
-        .add_systems(Update, (toggle_cursor, move_camera))
+        .add_systems(Startup, (
+            spawn::global_illumination,
+            spawn::camera,
+            spawn_voxel,
+        ))
+        .add_systems(Update, (
+            toggle_cursor,
+            move_camera,
+        ))
         .run();
+}
+
+fn spawn_voxel(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let voxel = Voxel::from_coordinates(0, 0, 0);
+    commands.spawn((
+        Transform::from_translation(voxel.origin()),
+        Mesh3d(meshes.add(generate_voxel_mesh(&voxel))),
+        MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
+    ));
 }
 
 fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
@@ -73,39 +94,6 @@ fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_indices(Indices::U32(indices))
-}
-
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // Voxel
-    let voxel = Voxel::from_coordinates(0, 0, 0);
-    commands.spawn((
-        Transform::from_translation(voxel.origin()),
-        Mesh3d(meshes.add(generate_voxel_mesh(&voxel))),
-        MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
-    ));
-
-    // Light
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 10_000.0,
-            shadow_maps_enabled: true,
-            ..default()
-        },
-        Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
-        ),
-    ));
-
-    // Camera
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(1.5, 2.0, 4.0)
-            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
-    ));
 }
 
 fn toggle_cursor(

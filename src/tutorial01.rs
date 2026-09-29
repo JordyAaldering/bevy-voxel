@@ -1,7 +1,9 @@
+mod spawn;
+
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 
-const MOVE_SPEED: f32 = 5.0;
-const MOUSE_SENSITIVITY: f32 = 0.002;
+const MOVE_SPEED: f32 = 1.0;
+const MOUSE_SENSITIVITY: f32 = 0.001;
 
 fn main() {
     App::new()
@@ -13,40 +15,27 @@ fn main() {
             }),
             ..default()
         }))
-        .add_systems(Startup, setup)
-        .add_systems(Update, (toggle_cursor, move_camera))
+        .add_systems(Startup, (
+            spawn::global_illumination,
+            spawn::camera,
+            setup_cuboid,
+        ))
+        .add_systems(Update, (
+            toggle_cursor,
+            move_camera,
+        ))
         .run();
 }
 
-fn setup(
+fn setup_cuboid(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Voxel
     commands.spawn((
         Transform::from_xyz(0.5, 0.5, 0.5),
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
-    ));
-
-    // Light
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 10_000.0,
-            shadow_maps_enabled: true,
-            ..default()
-        },
-        Transform::from_rotation(
-            Quat::from_euler(EulerRot::XYZ, 6.0, -7.5, 0.0)
-        ),
-    ));
-
-    // Camera
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(1.5, 2.0, 4.0)
-            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
 }
 
