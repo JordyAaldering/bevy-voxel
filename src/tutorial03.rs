@@ -1,11 +1,9 @@
 mod face;
-mod voxel;
 
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
 use crate::face::{Face, FaceDirection};
-use crate::voxel::Voxel;
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -22,6 +20,24 @@ impl Default for CameraSettings {
             move_speed: 5.0,
             mouse_sensitivity: 0.002,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Voxel {
+    x: usize,
+    y: usize,
+    z: usize,
+}
+
+impl Voxel {
+    pub fn from_coordinates(x: usize, y: usize, z: usize) -> Self {
+        Self { x, y, z }
+    }
+
+    /// Front-bottom-left corner of the voxel: (0,0,0) in this voxel's local space.
+    pub fn origin(&self) -> Vec3 {
+        Vec3::new(self.x as f32, self.y as f32, self.z as f32)
     }
 }
 
