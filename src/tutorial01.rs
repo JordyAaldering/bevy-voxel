@@ -2,6 +2,8 @@ mod spawn;
 
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 
+use crate::spawn::*;
+
 const MOVE_SPEED: f32 = 1.0;
 const MOUSE_SENSITIVITY: f32 = 0.001;
 
@@ -16,9 +18,9 @@ fn main() {
             ..default()
         }))
         .add_systems(Startup, (
-            spawn::global_illumination,
-            spawn::camera,
-            setup_cuboid,
+            spawn_global_illumination,
+            spawn_camera,
+            spawn_cuboid,
         ))
         .add_systems(Update, (
             toggle_cursor,
@@ -27,7 +29,7 @@ fn main() {
         .run();
 }
 
-fn setup_cuboid(
+fn spawn_cuboid(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-pub fn global_illumination(mut commands: Commands) {
+pub fn spawn_global_illumination(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {
             illuminance: 10_000.0,
@@ -13,7 +13,7 @@ pub fn global_illumination(mut commands: Commands) {
     ));
 }
 
-pub fn camera(mut commands: Commands) {
+pub fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(1.5, 2.0, 4.0)
