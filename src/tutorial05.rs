@@ -1,5 +1,7 @@
 mod face;
 
+use std::ops::{Index, IndexMut};
+
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, platform::collections::HashMap, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
@@ -33,19 +35,18 @@ struct Chunk {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ChunkPosition {
     x: i32,
-    y: i32,
     z: i32,
 }
 
 impl ChunkPosition {
-    fn new(x: i32, y: i32, z: i32) -> Self {
-        Self { x, y, z }
+    fn new(x: i32, z: i32) -> Self {
+        Self { x, z }
     }
 
     fn world_position(self) -> Vec3 {
         vec3(
             self.x as f32 * CHUNK_WIDTH as f32,
-            self.y as f32 * CHUNK_HEIGHT as f32,
+            0.0,
             self.z as f32 * CHUNK_WIDTH as f32,
         )
     }
@@ -54,6 +55,13 @@ impl ChunkPosition {
 #[derive(Default, Resource)]
 struct World {
     chunks: HashMap<ChunkPosition, Chunk>,
+}
+
+impl World {
+    fn try_get_neighbor_chunk(&self, position: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {
+        let neighbor_position = ChunkPosition::new(position.x + dx,position.z + dz);
+        self.chunks.get(&neighbor_position)
+    }
 }
 
 #[derive(Default)]
@@ -100,7 +108,7 @@ impl Chunk {
         (x, y, z)
     }
 
-    fn try_get_neighbor(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
+    fn try_get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
         let (nx, ny, nz) = match direction {
             FaceDirection::Right => (x + 1, y, z),
             FaceDirection::Left => (x.wrapping_sub(1), y, z),
@@ -118,11 +126,6 @@ impl Chunk {
         }
     }
 
-    fn get_mut(&mut self, x: usize, y: usize, z: usize) -> &mut VoxelType {
-        let idx = Self::xyz_to_index(x, y, z);
-        &mut self.voxels[idx]
-    }
-
     fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, VoxelType)> {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {
@@ -133,6 +136,22 @@ impl Chunk {
                 })
             })
         })
+    }
+}
+
+impl Index<(usize, usize, usize)> for Chunk {
+    type Output = VoxelType;
+
+    fn index(&self, (x, y, z): (usize, usize, usize)) -> &Self::Output {
+        let idx = Self::xyz_to_index(x, y, z);
+        &self.voxels[idx]
+    }
+}
+
+impl IndexMut<(usize, usize, usize)> for Chunk {
+    fn index_mut(&mut self, (x, y, z): (usize, usize, usize)) -> &mut Self::Output {
+        let idx = Self::xyz_to_index(x, y, z);
+        &mut self.voxels[idx]
     }
 }
 
@@ -192,14 +211,16 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<World>) -> Result {
 
         ui.separator();
 
-        for (position, _) in &world.chunks {
+        for (position, chunk) in &world.chunks {
+            let solid_voxels = chunk.iter().filter(|(_, _, _, voxel)| !voxel.is_transparent()).count();
+
             ui.collapsing(
-                format!("Chunk ({}, {}, {})", position.x, position.y, position.z),
+                format!("Chunk ({}, {})", position.x, position.z),
                |ui| {
+                    ui.label(format!("Solid voxels: {}", solid_voxels));
                     ui.label(format!(
-                        "World position: ({}, {}, {})",
+                        "World position: ({}, {})",
                         position.x * CHUNK_WIDTH as i32,
-                        position.y * CHUNK_HEIGHT as i32,
                         position.z * CHUNK_WIDTH as i32,
                     ));
                 },
@@ -220,29 +241,32 @@ fn spawn_world(
         Color::linear_rgb(0.2, 0.7, 0.3)
     );
 
+    // We need to instantiate all chunks first
     for z in -1..=1 {
         for x in -1..=1 {
-            let position = ChunkPosition::new(x, 0, z);
-            let chunk = generate_chunk();
-
-           commands.spawn((
-             Transform::from_translation(position.world_position()),
-               Mesh3d(meshes.add(generate_chunk_mesh(&chunk))),
-               MeshMaterial3d(material.clone()),
-            ));
-
+            let position = ChunkPosition::new(x, z);
+            let chunk = generate_chunk(position);
             world.chunks.insert(position, chunk);
         }
     }
+
+    // Now we can generate the meshes
+    for (&pos, chunk) in &world.chunks {
+        commands.spawn((
+            Transform::from_translation(pos.world_position()),
+            Mesh3d(meshes.add(generate_chunk_mesh(&world, chunk, pos))),
+            MeshMaterial3d(material.clone()),
+        ));
+    }
 }
 
-fn generate_chunk() -> Chunk {
+fn generate_chunk(pos: ChunkPosition) -> Chunk {
     let mut chunk = Chunk::default();
 
     for x in 0..CHUNK_WIDTH {
-        for y in 0..(CHUNK_HEIGHT / 2) {
+        for y in 0..(((pos.x + pos.z) as usize % CHUNK_HEIGHT) + 1) {
             for z in 0..CHUNK_WIDTH {
-                *chunk.get_mut(x, y, z) = VoxelType::Grass;
+                chunk[(x, y, z)] = VoxelType::Grass;
             }
         }
     }
@@ -250,7 +274,7 @@ fn generate_chunk() -> Chunk {
     chunk
 }
 
-fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
+fn generate_chunk_mesh(world: &World, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
     let mut mesh = MeshData::default();
 
     for (x, y, z, voxel) in chunk.iter() {
@@ -268,9 +292,40 @@ fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
             FaceDirection::Front,
             FaceDirection::Back,
         ] {
-            if let Some(neighbor) = chunk.try_get_neighbor(x, y, z, face) {
+            if let Some(neighbor) = chunk.try_get_neighbor_voxel(x, y, z, face) {
                 if !neighbor.is_transparent() {
                     continue;
+                }
+            } else {
+                // If chunk.try_get_neighbor_voxel returns None, it means that the neighbor is out of bounds.
+                // In that case, we need to check the neighboring chunk in the world
+                let (dx, dz) = match face {
+                    FaceDirection::Right => (1, 0),
+                    FaceDirection::Left => (-1, 0),
+                    FaceDirection::Front => (0, 1),
+                    FaceDirection::Back => (0, -1),
+                    // We are at the build limit, so we always have to show this face
+                    FaceDirection::Top => (0, 0),
+                    FaceDirection::Bottom => (0, 0),
+                };
+
+                if dx != 0 || dz != 0 {
+                    if let Some(neighbor_chunk) = world.try_get_neighbor_chunk(chunk_pos, dx, dz) {
+                        let (nx, ny, nz) = match face {
+                            FaceDirection::Right => (0, y, z),
+                            FaceDirection::Left => (CHUNK_WIDTH - 1, y, z),
+                            FaceDirection::Front => (x, y, 0),
+                            FaceDirection::Back => (x, y, CHUNK_WIDTH - 1),
+                            FaceDirection::Top => unreachable!(),
+                            FaceDirection::Bottom => unreachable!(),
+                        };
+                        if !neighbor_chunk[(nx, ny, nz)].is_transparent() {
+                            continue;
+                        }
+                    } else {
+                        // No neighboring chunk, so assume that we don't need to render this face
+                        continue;
+                    }
                 }
             }
 

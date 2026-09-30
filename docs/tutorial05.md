@@ -9,7 +9,7 @@ Currently, we always draw faces at the edge of a chunk.
 If we are trying to get a voxel at the edge, we need to see if there exists a chunk beside it.
 If so, we need to check if the corresponding voxel in that chunk is transparent.
 
-[todo]
+We only place chunks horizontally, so whenever the face is up or down we are simply at the build limit, and always have to show that face.
 
 We can further optimize this.
 If a chunk at the requested position does not exist, we can assume that it has not yet been necessary to generate it.

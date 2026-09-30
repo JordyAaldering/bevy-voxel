@@ -1,5 +1,7 @@
 mod face;
 
+use std::ops::{Index, IndexMut};
+
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
@@ -74,7 +76,7 @@ impl Chunk {
         (x, y, z)
     }
 
-    fn try_get_neighbor(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
+    fn try_get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
         let (nx, ny, nz) = match direction {
             FaceDirection::Right => (x + 1, y, z),
             FaceDirection::Left => (x.wrapping_sub(1), y, z),
@@ -92,11 +94,6 @@ impl Chunk {
         }
     }
 
-    fn get_mut(&mut self, x: usize, y: usize, z: usize) -> &mut VoxelType {
-        let idx = Self::xyz_to_index(x, y, z);
-        &mut self.voxels[idx]
-    }
-
     fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, VoxelType)> {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {
@@ -107,6 +104,22 @@ impl Chunk {
                 })
             })
         })
+    }
+}
+
+impl Index<(usize, usize, usize)> for Chunk {
+    type Output = VoxelType;
+
+    fn index(&self, (x, y, z): (usize, usize, usize)) -> &Self::Output {
+        let idx = Self::xyz_to_index(x, y, z);
+        &self.voxels[idx]
+    }
+}
+
+impl IndexMut<(usize, usize, usize)> for Chunk {
+    fn index_mut(&mut self, (x, y, z): (usize, usize, usize)) -> &mut Self::Output {
+        let idx = Self::xyz_to_index(x, y, z);
+        &mut self.voxels[idx]
     }
 }
 
@@ -168,8 +181,7 @@ fn spawn_voxel(
     for x in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
             for z in 0..CHUNK_WIDTH {
-                let voxel = chunk.get_mut(x, y, z);
-                *voxel = VoxelType::Grass;
+                chunk[(x, y, z)] = VoxelType::Grass;
             }
         }
     }
@@ -199,7 +211,7 @@ fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
             FaceDirection::Front,
             FaceDirection::Back,
         ] {
-            if let Some(neighbor) = chunk.try_get_neighbor(x, y, z, face) {
+            if let Some(neighbor) = chunk.try_get_neighbor_voxel(x, y, z, face) {
                 if !neighbor.is_transparent() {
                     continue;
                 }
