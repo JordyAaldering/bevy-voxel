@@ -27,7 +27,7 @@ const CHUNK_WIDTH: usize = 3;
 const CHUNK_HEIGHT: usize = 4;
 
 struct Chunk {
-    voxels: [Voxel; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 #[derive(Default)]
@@ -39,33 +39,43 @@ struct MeshData {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Voxel {
+enum VoxelType {
     Air,
     Grass,
 }
 
 impl Default for Chunk {
     fn default() -> Self {
-        Self { voxels: [Voxel::Air; _] }
+        Self { voxels: [VoxelType::Air; _] }
     }
 }
 
 impl Chunk {
-    fn get_mut(&mut self, x: usize, y: usize, z: usize) -> &mut Voxel {
+    fn xyz_to_index(x: usize, y: usize, z: usize) -> usize {
         debug_assert!(x < CHUNK_WIDTH);
         debug_assert!(y < CHUNK_HEIGHT);
         debug_assert!(z < CHUNK_WIDTH);
-        let idx = x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z);
+        x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
+    }
+
+    fn index_to_xyz(idx: usize) -> (usize, usize, usize) {
+        let x = idx % CHUNK_WIDTH;
+        let y = (idx / CHUNK_WIDTH) % CHUNK_HEIGHT;
+        let z = idx / (CHUNK_WIDTH * CHUNK_HEIGHT);
+        (x, y, z)
+    }
+
+    fn get_mut(&mut self, x: usize, y: usize, z: usize) -> &mut VoxelType {
+        let idx = Self::xyz_to_index(x, y, z);
         &mut self.voxels[idx]
     }
 
-    fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, Voxel)> {
-        let mut idx = 0;
+    fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, VoxelType)> {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {
                 (0..CHUNK_WIDTH).map(move |x| {
+                    let idx = Self::xyz_to_index(x, y, z);
                     let voxel = self.voxels[idx];
-                    idx += 1;
                     (x, y, z, voxel)
                 })
             })
@@ -132,7 +142,7 @@ fn spawn_voxel(
         for y in 0..(CHUNK_HEIGHT / 2) {
             for z in 0..CHUNK_WIDTH {
                 let voxel = chunk.get_mut(x, y, z);
-                *voxel = Voxel::Grass;
+                *voxel = VoxelType::Grass;
             }
         }
     }
@@ -158,8 +168,8 @@ fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
         .with_inserted_indices(Indices::U32(mesh.indices))
 }
 
-fn generate_voxel_mesh(mesh: &mut MeshData, origin: Vec3, voxel: Voxel) {
-    if voxel == Voxel::Air {
+fn generate_voxel_mesh(mesh: &mut MeshData, origin: Vec3, voxel: VoxelType) {
+    if voxel == VoxelType::Air {
         return;
     }
 
