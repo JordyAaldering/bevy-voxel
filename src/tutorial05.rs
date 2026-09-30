@@ -1,7 +1,7 @@
 mod face;
 
-use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
+use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, platform::collections::HashMap, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
 use crate::face::{Face, FaceDirection};
 
@@ -28,6 +28,32 @@ const CHUNK_HEIGHT: usize = 4;
 
 struct Chunk {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ChunkPosition {
+    x: i32,
+    y: i32,
+    z: i32,
+}
+
+impl ChunkPosition {
+    fn new(x: i32, y: i32, z: i32) -> Self {
+        Self { x, y, z }
+    }
+
+    fn world_position(self) -> Vec3 {
+        vec3(
+            self.x as f32 * CHUNK_WIDTH as f32,
+            self.y as f32 * CHUNK_HEIGHT as f32,
+            self.z as f32 * CHUNK_WIDTH as f32,
+        )
+    }
+}
+
+#[derive(Default, Resource)]
+struct World {
+    chunks: HashMap<ChunkPosition, Chunk>,
 }
 
 #[derive(Default)]
@@ -120,15 +146,17 @@ fn main() {
             }),
             ..default()
         }))
+        .init_resource::<World>()
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_plugins(EguiPlugin::default())
         .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
+        .add_systems(EguiPrimaryContextPass, chunk_debug_ui)
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_camera,
-            spawn_voxel,
+            spawn_world,
         ))
         .add_systems(Update, (
             toggle_cursor,
@@ -158,27 +186,68 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-fn spawn_voxel(
+fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<World>) -> Result {
+    egui::Window::new("Chunks").show(contexts.ctx_mut()?, |ui| {
+        ui.label(format!("Loaded chunks: {}", world.chunks.len()));
+
+        ui.separator();
+
+        for (position, _) in &world.chunks {
+            ui.collapsing(
+                format!("Chunk ({}, {}, {})", position.x, position.y, position.z),
+               |ui| {
+                    ui.label(format!(
+                        "World position: ({}, {}, {})",
+                        position.x * CHUNK_WIDTH as i32,
+                        position.y * CHUNK_HEIGHT as i32,
+                        position.z * CHUNK_WIDTH as i32,
+                    ));
+                },
+            );
+        }
+    });
+
+    Ok(())
+}
+
+fn spawn_world(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut world: ResMut<World>,
 ) {
+    let material = materials.add(
+        Color::linear_rgb(0.2, 0.7, 0.3)
+    );
+
+    for z in -1..=1 {
+        for x in -1..=1 {
+            let position = ChunkPosition::new(x, 0, z);
+            let chunk = generate_chunk();
+
+           commands.spawn((
+             Transform::from_translation(position.world_position()),
+               Mesh3d(meshes.add(generate_chunk_mesh(&chunk))),
+               MeshMaterial3d(material.clone()),
+            ));
+
+            world.chunks.insert(position, chunk);
+        }
+    }
+}
+
+fn generate_chunk() -> Chunk {
     let mut chunk = Chunk::default();
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
             for z in 0..CHUNK_WIDTH {
-                let voxel = chunk.get_mut(x, y, z);
-                *voxel = VoxelType::Grass;
+                *chunk.get_mut(x, y, z) = VoxelType::Grass;
             }
         }
     }
 
-    commands.spawn((
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        Mesh3d(meshes.add(generate_chunk_mesh(&chunk))),
-        MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
-    ));
+    chunk
 }
 
 fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
