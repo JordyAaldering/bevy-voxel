@@ -44,6 +44,15 @@ enum VoxelType {
     Grass,
 }
 
+impl VoxelType {
+    fn is_transparent(&self) -> bool {
+        match self {
+            Self::Air => true,
+            Self::Grass => false,
+        }
+    }
+}
+
 impl Default for Chunk {
     fn default() -> Self {
         Self { voxels: [VoxelType::Air; _] }
@@ -63,6 +72,24 @@ impl Chunk {
         let y = (idx / CHUNK_WIDTH) % CHUNK_HEIGHT;
         let z = idx / (CHUNK_WIDTH * CHUNK_HEIGHT);
         (x, y, z)
+    }
+
+    fn try_get_neighbor(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
+        let (nx, ny, nz) = match direction {
+            FaceDirection::Right => (x + 1, y, z),
+            FaceDirection::Left => (x.wrapping_sub(1), y, z),
+            FaceDirection::Top => (x, y + 1, z),
+            FaceDirection::Bottom => (x, y.wrapping_sub(1), z),
+            FaceDirection::Front => (x, y, z + 1),
+            FaceDirection::Back => (x, y, z.wrapping_sub(1)),
+        };
+
+        if nx < CHUNK_WIDTH && ny < CHUNK_HEIGHT && nz < CHUNK_WIDTH {
+            let idx = Self::xyz_to_index(nx, ny, nz);
+            Some(self.voxels[idx])
+        } else {
+            None
+        }
     }
 
     fn get_mut(&mut self, x: usize, y: usize, z: usize) -> &mut VoxelType {
@@ -158,7 +185,34 @@ fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
     let mut mesh = MeshData::default();
 
     for (x, y, z, voxel) in chunk.iter() {
-        generate_voxel_mesh(&mut mesh, vec3(x as f32, y as f32, z as f32), voxel);
+        if voxel == VoxelType::Air {
+            continue;
+        }
+
+        let origin = vec3(x as f32, y as f32, z as f32);
+
+        for face in [
+            FaceDirection::Right,
+            FaceDirection::Left,
+            FaceDirection::Top,
+            FaceDirection::Bottom,
+            FaceDirection::Front,
+            FaceDirection::Back,
+        ] {
+            if let Some(neighbor) = chunk.try_get_neighbor(x, y, z, face) {
+                if !neighbor.is_transparent() {
+                    continue;
+                }
+            }
+
+            let face = Face::new(origin, face);
+
+            let start = mesh.vertices.len() as u32;
+            mesh.vertices.extend_from_slice(&face.vertices());
+            mesh.indices.extend_from_slice(&face.indices(start));
+            mesh.normals.extend_from_slice(&face.normals());
+            mesh.uvs.extend_from_slice(&face.uvs());
+        }
     }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
@@ -166,29 +220,6 @@ fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mesh.normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mesh.uvs)
         .with_inserted_indices(Indices::U32(mesh.indices))
-}
-
-fn generate_voxel_mesh(mesh: &mut MeshData, origin: Vec3, voxel: VoxelType) {
-    if voxel == VoxelType::Air {
-        return;
-    }
-
-    for face in [
-        FaceDirection::Right,
-        FaceDirection::Left,
-        FaceDirection::Top,
-        FaceDirection::Bottom,
-        FaceDirection::Front,
-        FaceDirection::Back,
-    ] {
-        let face = Face::new(origin, face);
-
-        let start = mesh.vertices.len() as u32;
-        mesh.vertices.extend_from_slice(&face.vertices());
-        mesh.indices.extend_from_slice(&face.indices(start));
-        mesh.normals.extend_from_slice(&face.normals());
-        mesh.uvs.extend_from_slice(&face.uvs());
-    }
 }
 
 fn toggle_cursor(

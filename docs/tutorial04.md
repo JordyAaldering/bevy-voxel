@@ -18,3 +18,13 @@ Let's search around a bit to see how other people resolve this issue...
 https://www.reddit.com/r/VoxelGameDev/comments/1lynvrl/how_do_i_efficiently_store_blocks_in_chunks/
 https://gamedev.stackexchange.com/questions/172119/storing-voxels-for-a-voxel-engine-in-c
 https://discussions.unity.com/t/designing-a-voxel-structure-around-ecs/789222/4
+
+## Smarter chunk meshes
+
+If you move the camera inside the chunk, you will see that inside we are drawing a bunch of triangles that are normally not even visible.
+We only want to mesh the (sides of) voxels that are actually visible.
+That is, any quad that is facing towards air, or any other transparent voxel.
+
+This is actually really simple.
+We just add a convenience function for getting a neighbouring voxel, if it exists.
+During meshing we check if this voxel is transparent, and don't mesh it if it is.
