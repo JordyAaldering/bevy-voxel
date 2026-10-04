@@ -28,6 +28,10 @@ path = "src/tutorial05.rs"
 name = "tutorial06"
 path = "src/tutorial06.rs"
 
+[[bin]]
+name = "tutorial07"
+path = "src/tutorial07.rs"
+
 [profile.dev]
 opt-level = 1
 
