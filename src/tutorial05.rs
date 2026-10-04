@@ -101,13 +101,6 @@ impl Chunk {
         x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
 
-    fn index_to_xyz(idx: usize) -> (usize, usize, usize) {
-        let x = idx % CHUNK_WIDTH;
-        let y = (idx / CHUNK_WIDTH) % CHUNK_HEIGHT;
-        let z = idx / (CHUNK_WIDTH * CHUNK_HEIGHT);
-        (x, y, z)
-    }
-
     fn try_get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
         let (nx, ny, nz) = match direction {
             FaceDirection::Right => (x + 1, y, z),

@@ -109,6 +109,7 @@ impl Face {
         [self.direction.normal(); 4]
     }
 
+    #[allow(unused)]
     /// Returns the UV coordinates of the 4 corners of the quad.
     pub fn uvs(&self) -> [Vec2; 4] {
         [

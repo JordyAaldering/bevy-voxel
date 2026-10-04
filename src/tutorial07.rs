@@ -184,13 +184,6 @@ impl Chunk {
         x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
 
-    fn index_to_xyz(idx: usize) -> (usize, usize, usize) {
-        let x = idx % CHUNK_WIDTH;
-        let y = (idx / CHUNK_WIDTH) % CHUNK_HEIGHT;
-        let z = idx / (CHUNK_WIDTH * CHUNK_HEIGHT);
-        (x, y, z)
-    }
-
     fn try_get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
         let (nx, ny, nz) = match direction {
             FaceDirection::Right => (x + 1, y, z),
@@ -503,7 +496,6 @@ fn look(
 fn move_freecam(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
     mode: Res<GameMode>,
     settings: Res<CameraSettings>,
     cursor: Single<&CursorOptions, With<PrimaryWindow>>,
@@ -550,7 +542,7 @@ fn move_player(
     keyboard: Res<ButtonInput<KeyCode>>,
     mode: Res<GameMode>,
     world: Res<World>,
-    mut player: Single<(&mut Transform, &mut Player)>,
+    player: Single<(&mut Transform, &mut Player)>,
 ) {
     if *mode != GameMode::Survival {
         return;
