@@ -2,7 +2,7 @@
 name = "voxel"
 version = "0.1.0"
 edition = "2024"
-default-run = "tutorial06"
+default-run = "tutorial07"
 
 [[bin]]
 name = "tutorial01"

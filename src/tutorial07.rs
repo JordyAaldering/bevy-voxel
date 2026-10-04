@@ -28,6 +28,30 @@ impl Default for CameraSettings {
 const CHUNK_WIDTH: usize = 3;
 const CHUNK_HEIGHT: usize = 4;
 
+const PLAYER_WIDTH: f32 = 0.6;
+const PLAYER_HEIGHT: f32 = 1.8;
+const PLAYER_EYE_HEIGHT: f32 = 1.6;
+
+const PLAYER_SPEED: f32 = 5.0;
+const JUMP_SPEED: f32 = 7.0;
+const GRAVITY: f32 = 20.0;
+
+#[derive(Component)]
+struct MainCamera;
+
+#[derive(Resource, Default, PartialEq, Eq)]
+enum GameMode {
+    #[default]
+    Survival,
+    Spectator,
+}
+
+#[derive(Component)]
+struct Player {
+    velocity: Vec3,
+    grounded: bool,
+}
+
 struct Chunk {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
@@ -228,6 +252,7 @@ fn main() {
             })
         )
         .init_resource::<World>()
+        .init_resource::<GameMode>()
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_plugins(EguiPlugin::default())
@@ -236,12 +261,16 @@ fn main() {
         .add_systems(EguiPrimaryContextPass, chunk_debug_ui)
         .add_systems(Startup, (
             spawn_global_illumination,
-            spawn_camera,
+            spawn_player,
             spawn_world,
         ))
         .add_systems(Update, (
             toggle_cursor,
-            move_camera,
+            look,
+            move_freecam,
+            move_player,
+            follow_player,
+            toggle_control_mode,
         ))
         .run();
 }
@@ -259,11 +288,19 @@ fn spawn_global_illumination(mut commands: Commands) {
     ));
 }
 
-fn spawn_camera(mut commands: Commands) {
+fn spawn_player(mut commands: Commands) {
     commands.spawn((
+        Player {
+            velocity: Vec3::ZERO,
+            grounded: false,
+        },
+        Transform::from_xyz(1.5, 5.0, 1.5),
+    ));
+
+    commands.spawn((
+        MainCamera,
         Camera3d::default(),
-        Transform::from_xyz(1.5, 2.0, 4.0)
-            .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
+        Transform::from_xyz(1.5, 5.0 + PLAYER_EYE_HEIGHT, 1.5),
     ));
 }
 
@@ -442,11 +479,9 @@ fn toggle_cursor(
     }
 }
 
-fn move_camera(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
+fn look(
     settings: Res<CameraSettings>,
+    mouse_motion: Res<AccumulatedMouseMotion>,
     cursor: Single<&CursorOptions, With<PrimaryWindow>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
@@ -462,6 +497,25 @@ fn move_camera(
         camera.rotate_y(-delta.x * settings.mouse_sensitivity);
 
         camera.rotate_local_x(-delta.y * settings.mouse_sensitivity);
+    }
+}
+
+fn move_freecam(
+    time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse_motion: Res<AccumulatedMouseMotion>,
+    mode: Res<GameMode>,
+    settings: Res<CameraSettings>,
+    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+    mut camera: Single<&mut Transform, With<Camera3d>>,
+) {
+    if *mode != GameMode::Spectator {
+        return;
+    }
+
+    // Don't move the camera if app is unfocused
+    if cursor.grab_mode == CursorGrabMode::None {
+        return;
     }
 
     // Move
@@ -489,4 +543,178 @@ fn move_camera(
     if movement != Vec3::ZERO {
         camera.translation += settings.move_speed * time.delta_secs() * movement.normalize();
     }
+}
+
+fn move_player(
+    time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mode: Res<GameMode>,
+    world: Res<World>,
+    mut player: Single<(&mut Transform, &mut Player)>,
+) {
+    if *mode != GameMode::Survival {
+        return;
+    }
+
+    let (mut transform, mut player) = player.into_inner();
+
+    let mut movement = Vec3::ZERO;
+
+    if keyboard.pressed(KeyCode::KeyW) {
+        movement += *transform.forward();
+    }
+
+    if keyboard.pressed(KeyCode::KeyS) {
+        movement += *transform.back();
+    }
+
+    if keyboard.pressed(KeyCode::KeyA) {
+        movement += *transform.left();
+    }
+
+    if keyboard.pressed(KeyCode::KeyD) {
+        movement += *transform.right();
+    }
+
+    if movement != Vec3::ZERO {
+        movement = movement.normalize();
+    }
+
+    player.velocity.x = movement.x * PLAYER_SPEED;
+    player.velocity.z = movement.z * PLAYER_SPEED;
+
+    if player.grounded && keyboard.just_pressed(KeyCode::Space) {
+        player.velocity.y = JUMP_SPEED;
+        player.grounded = false;
+    }
+
+    player.velocity.y -= GRAVITY * time.delta_secs();
+
+    move_with_collisions(
+        &mut transform.translation,
+        &mut player,
+        &world,
+        time.delta_secs(),
+    );
+}
+
+/// Makes the camera follow the player when in player mode.
+fn follow_player(
+    mode: Res<GameMode>,
+    player: Single<&Transform, (With<Player>, Without<MainCamera>)>,
+    mut camera: Single<&mut Transform, (With<MainCamera>, Without<Player>)>,
+) {
+    if *mode != GameMode::Survival {
+        return;
+    }
+
+    camera.translation = player.translation + Vec3::Y * PLAYER_EYE_HEIGHT;
+
+    let forward = player.forward();
+    let yaw = forward.x.atan2(-forward.z);
+
+    let (_, pitch, _) = camera.rotation.to_euler(EulerRot::YXZ);
+    camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+}
+
+fn move_with_collisions(
+    position: &mut Vec3,
+    player: &mut Player,
+    world: &World,
+    dt: f32,
+) {
+    player.grounded = false;
+
+    // X
+    let old_x = position.x;
+    position.x += player.velocity.x * dt;
+
+    if collides(world, *position) {
+        position.x = old_x;
+        player.velocity.x = 0.0;
+    }
+
+    // Y
+    let old_y = position.y;
+    position.y += player.velocity.y * dt;
+
+    if collides(world, *position) {
+        if player.velocity.y < 0.0 {
+            player.grounded = true;
+        }
+
+        position.y = old_y;
+        player.velocity.y = 0.0;
+    }
+
+    // Z
+    let old_z = position.z;
+    position.z += player.velocity.z * dt;
+
+    if collides(world, *position) {
+        position.z = old_z;
+        player.velocity.z = 0.0;
+    }
+}
+
+fn toggle_control_mode(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut mode: ResMut<GameMode>,
+    player: Single<&Transform, (With<Player>, Without<MainCamera>)>,
+    mut camera: Single<&mut Transform, (With<MainCamera>, Without<Player>)>,
+) {
+    if !keyboard.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+
+    match *mode {
+        GameMode::Survival => {
+            *mode = GameMode::Spectator;
+        }
+        GameMode::Spectator => {
+            *mode = GameMode::Survival;
+
+            camera.translation =
+                player.translation + Vec3::Y * PLAYER_EYE_HEIGHT;
+        }
+    }
+}
+
+fn collides(world: &World, position: Vec3) -> bool {
+    let half_width = PLAYER_WIDTH / 2.0;
+
+    let min = vec3(
+        position.x - half_width,
+        position.y,
+        position.z - half_width,
+    );
+
+    let max = vec3(
+        position.x + half_width,
+        position.y + PLAYER_HEIGHT,
+        position.z + half_width,
+    );
+
+    const EPSILON: f32 = 0.001;
+
+    let min_x = min.x.floor() as i32;
+    let max_x = (max.x - EPSILON).floor() as i32;
+
+    let min_y = min.y.floor() as i32;
+    let max_y = (max.y - EPSILON).floor() as i32;
+
+    let min_z = min.z.floor() as i32;
+    let max_z = (max.z - EPSILON).floor() as i32;
+
+    for z in min_z..=max_z {
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                if world.get_voxel(x, y, z).is_some_and(|v| !v.is_transparent()) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
