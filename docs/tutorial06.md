@@ -28,3 +28,14 @@ Find a spritesheet you like somewhere online, and put it in the `assets` folder.
 
 For pixel-art voxel textures you'll probably also want nearest-neighbour texture filtering.
 Otherwise, your grass/dirt pixels can become blurred.
+
+## Different faces
+
+Now let's make the grass block have different sides from the top.
+It turns out, if we do this naively the texture is upside down.
+
+In Bevy, the vertical axis for the pixels of textures / images, and when sampling textures in a shader, points downwards, from top to bottom. The origin is at the top left.
+This is inconsistent with the World-coordinate system used everywhere else in Bevy, where the Y axis points up.
+It is, however, consistent with how most image file formats store pixel data, and with how most graphics APIs work.
+
+The easiest way to solve this is by flipping the top and bottom coordinates in `TextureAtlas::uvs`.

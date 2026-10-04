@@ -97,11 +97,12 @@ impl TextureAtlas {
         let tile_height = 1.0 / self.height as f32;
         let x = tile.x as f32 * tile_width;
         let y = tile.y as f32 * tile_height;
+        // Note that the Y axis is flipped in UV coordinates, so we need to flip the Y coordinate of the tile position
         [
-            vec2(x, y),  // Bottom left
-            vec2(x + tile_width, y),  // Bottom right
-            vec2(x, y + tile_height),  // Top left
-            vec2(x + tile_width, y + tile_height),  // Top right
+            vec2(x, y + tile_height), // Bottom left
+            vec2(x + tile_width, y + tile_height), // Bottom right
+            vec2(x, y), // Top left
+            vec2(x + tile_width, y), // Top right
         ]
     }
 }
@@ -114,11 +115,16 @@ impl VoxelType {
         }
     }
 
-    fn texture(self, _face: FaceDirection) -> TextureAtlasPosition {
+    fn texture(self, face: FaceDirection) -> TextureAtlasPosition {
         match self {
             Self::Air => unreachable!(),
-            // Here we could use the face to show a different texture for the sides
-            Self::Grass => TextureAtlasPosition { x: 3, y: 1 },
+            Self::Grass => {
+                match face {
+                    FaceDirection::Top => TextureAtlasPosition { x: 3, y: 1 },
+                    FaceDirection::Bottom => TextureAtlasPosition { x: 1, y: 0 },
+                    _ => TextureAtlasPosition { x: 2, y: 0 },
+                }
+            },
             Self::Dirt => TextureAtlasPosition { x: 1, y: 0 },
         }
     }
