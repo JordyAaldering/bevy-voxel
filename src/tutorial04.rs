@@ -135,7 +135,7 @@ fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
             FaceDirection::Front,
             FaceDirection::Back,
         ] {
-            if let Some(neighbor) = chunk.try_get_neighbor_voxel(x, y, z, face) {
+            if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, face) {
                 if !neighbor.is_transparent() {
                     continue;
                 }

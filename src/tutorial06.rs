@@ -242,12 +242,12 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
             FaceDirection::Front,
             FaceDirection::Back,
         ] {
-            if let Some(neighbor) = chunk.try_get_neighbor_voxel(x, y, z, direction) {
+            if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, direction) {
                 if !neighbor.is_transparent() {
                     continue;
                 }
             } else {
-                // If chunk.try_get_neighbor_voxel returns None, it means that the neighbor is out of bounds.
+                // If chunk.get_neighbor_voxel returns None, it means that the neighbor is out of bounds.
                 // In that case, we need to check the neighboring chunk in the world
                 let (dx, dz) = match direction {
                     FaceDirection::Right => (1, 0),

@@ -13,7 +13,7 @@ pub struct Chunk {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkPosition {
     pub x: i32,
     pub z: i32,
@@ -47,7 +47,7 @@ impl Chunk {
         x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
 
-    pub fn try_get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
+    pub fn get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
         let (nx, ny, nz) = match direction {
             FaceDirection::Right => (x + 1, y, z),
             FaceDirection::Left => (x.wrapping_sub(1), y, z),
