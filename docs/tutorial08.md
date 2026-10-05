@@ -24,4 +24,22 @@ Meshes are now local to each chunk.
 Whenever a change occurs (for example, a block is placed or removed, but this could also be a tree growing), we mark that chunk as 'dirty'.
 We don't immediately update the chunk.
 Instead, we mark it as dirty, and the `World` becomes responsible for coordinating which chunks update when.
-We do this because ...?
+We do this because the world can then decide when it is a good time to re-mesh and to batch multiple meshing operations together.
+
+However, I was not yet sure whether this still applies to ECS systems.
+It seems those might naturally expose the desired dirty-tracking.
+Time for some googling.
+
+It seems we have a few alternatives.
+
+We can add a marker:
+```rust
+#[derive(Component)]
+struct NeedsRemesh;
+```
+
+Or we can make `Chunk` a `Component`, and then use Bevy's `Changed<Chunk>` feature to automatically detect changes.
+Because the latter may also respond to changes that do not relate to the mesh, and because it does not respond to changes necessary to neighbouring chunks, I don't think that is the right approach.
+
+Using the marker seems like an interesting approach, but because we already go through the World to update chunks, the more natural place did end up being in the World, just using a HashSet.
+If you've developed your chunks to already be `Component`s, using markers might be the more natural approach.
