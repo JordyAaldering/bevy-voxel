@@ -140,7 +140,8 @@ fn main() {
             toggle_gamemode,
             player_look,
             player_move,
-            draw_selected_voxel,break_block,
+            draw_selected_voxel,
+            break_block,
         ))
         .run();
 }
@@ -651,12 +652,7 @@ fn draw_selected_voxel(
         return;
     };
 
-    let origin = vec3(
-        hit.position.x as f32,
-        hit.position.y as f32,
-        hit.position.z as f32,
-    );
-
+    let origin = hit.position.origin();
     let face = Face::new(origin, hit.face);
     let vertices = face.vertices();
 
