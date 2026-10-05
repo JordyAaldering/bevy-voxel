@@ -10,6 +10,11 @@ pub struct VoxelWorld {
 }
 
 impl VoxelWorld {
+    pub fn is_solid(&self, pos: WorldPosition) -> bool {
+        self.get_voxel(pos)
+            .is_some_and(|voxel| !voxel.is_transparent())
+    }
+
     pub fn get_voxel(&self, pos: WorldPosition) -> Option<VoxelType> {
         if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
             return None;
