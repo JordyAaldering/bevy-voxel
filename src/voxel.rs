@@ -1,5 +1,7 @@
 use bevy::math::{Vec3, vec3};
 
+use crate::chunk::{CHUNK_WIDTH, CHUNK_HEIGHT};
+
 /// A voxel's position in world space.
 pub struct WorldPosition {
     pub x: i32,
@@ -28,5 +30,13 @@ impl VoxelPosition {
 
     pub fn origin(&self) -> Vec3 {
         vec3(self.x as f32, self.y as f32, self.z as f32)
+    }
+
+    pub fn to_index(self) -> usize {
+        let (x, y, z) = (self.x, self.y, self.z);
+        debug_assert!(x < CHUNK_WIDTH);
+        debug_assert!(y < CHUNK_HEIGHT);
+        debug_assert!(z < CHUNK_WIDTH);
+        x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
 }

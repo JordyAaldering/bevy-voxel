@@ -145,10 +145,10 @@ fn spawn_world(
     }
 
     // Now we can generate the meshes
-    for (&pos, chunk) in &world.chunks {
+    for (&chunk_pos, chunk) in &world.chunks {
         commands.spawn((
-            Transform::from_translation(pos.world_position()),
-            Mesh3d(meshes.add(generate_chunk_mesh(&world, chunk, pos))),
+            Transform::from_translation(chunk_pos.origin()),
+            Mesh3d(meshes.add(generate_chunk_mesh(&world, chunk, chunk_pos))),
             MeshMaterial3d(material.clone()),
         ));
     }
