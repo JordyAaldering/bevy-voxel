@@ -90,7 +90,7 @@ impl VoxelType {
     fn is_solid(&self) -> bool {
         match self {
             Self::Air => false,
-            _ => false,
+            _ => true,
         }
     }
 
@@ -640,7 +640,7 @@ fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
 
 fn break_block(
     mouse: Res<ButtonInput<MouseButton>>,
-    world: Res<VoxelWorld>,
+    mut world: ResMut<VoxelWorld>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
@@ -650,9 +650,9 @@ fn break_block(
     let origin = camera.translation();
     let direction = camera.forward();
 
-    if let Some(hit) = find_voxel(&world, origin, *direction) {
-        info!("Hit {:?} at {:?} face", hit.position, hit.face);
-        // todo
+    if let Some(VoxelHit { position, face }) = find_voxel(&world, origin, *direction) {
+        info!("Hit {:?} at {:?} face", position, face);
+        world.set_voxel(position, VoxelType::Air);
     }
 }
 

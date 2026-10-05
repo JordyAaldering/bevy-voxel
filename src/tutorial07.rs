@@ -82,7 +82,7 @@ impl VoxelType {
     fn is_solid(&self) -> bool {
         match self {
             Self::Air => false,
-            _ => false,
+            _ => true,
         }
     }
 
