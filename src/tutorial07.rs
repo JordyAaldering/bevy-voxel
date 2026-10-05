@@ -1,12 +1,13 @@
 mod chunk;
 mod face;
+mod texture_atlas;
 mod voxel;
 mod world;
 
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::{chunk::*, face::*, voxel::*, world::*};
+use crate::{chunk::*, face::*, texture_atlas::{TextureAtlas, TextureAtlasPosition}, voxel::*, world::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -66,34 +67,6 @@ pub enum VoxelType {
     Dirt,
 }
 
-struct TextureAtlas {
-    width: usize,
-    height: usize,
-}
-
-#[derive(Clone, Copy)]
-struct TextureAtlasPosition {
-    x: usize,
-    y: usize,
-}
-
-
-impl TextureAtlas {
-    fn uvs(&self, tile: TextureAtlasPosition) -> [Vec2; 4] {
-        let tile_width = 1.0 / self.width as f32;
-        let tile_height = 1.0 / self.height as f32;
-        let x = tile.x as f32 * tile_width;
-        let y = tile.y as f32 * tile_height;
-        // Note that the Y axis is flipped in UV coordinates, so we need to flip the Y coordinate of the tile position
-        [
-            vec2(x, y + tile_height), // Bottom left
-            vec2(x + tile_width, y + tile_height), // Bottom right
-            vec2(x, y), // Top left
-            vec2(x + tile_width, y), // Top right
-        ]
-    }
-}
-
 impl VoxelType {
     fn is_transparent(&self) -> bool {
         match self {
@@ -107,12 +80,12 @@ impl VoxelType {
             Self::Air => unreachable!(),
             Self::Grass => {
                 match face {
-                    FaceDirection::Top => TextureAtlasPosition { x: 3, y: 1 },
-                    FaceDirection::Bottom => TextureAtlasPosition { x: 1, y: 0 },
-                    _ => TextureAtlasPosition { x: 2, y: 0 },
+                    FaceDirection::Top => TextureAtlasPosition::new(3, 1),
+                    FaceDirection::Bottom => TextureAtlasPosition::new(1, 0),
+                    _ => TextureAtlasPosition::new(2, 0),
                 }
             },
-            Self::Dirt => TextureAtlasPosition { x: 1, y: 0 },
+            Self::Dirt => TextureAtlasPosition::new(1, 0),
         }
     }
 }
@@ -266,7 +239,7 @@ fn generate_chunk(pos: ChunkPosition) -> Chunk {
 fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
     let mut mesh = MeshData::default();
 
-    let atlas = TextureAtlas { width: 4, height: 4 };
+    let atlas = TextureAtlas::new(4, 4);
 
     for (pos, voxel) in chunk.iter() {
         if voxel == VoxelType::Air {
