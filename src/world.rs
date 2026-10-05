@@ -1,6 +1,6 @@
 use bevy::{prelude::*, platform::collections::HashMap};
 
-use crate::{chunk::*, voxel::VoxelPosition};
+use crate::{chunk::*, voxel::*};
 
 use super::VoxelType;
 
@@ -10,24 +10,29 @@ pub struct VoxelWorld {
 }
 
 impl VoxelWorld {
-    pub fn get_voxel(&self, x: i32, y: i32, z: i32) -> Option<VoxelType> {
-        if y < 0 || y >= CHUNK_HEIGHT as i32 {
+    pub fn get_voxel(&self, pos: WorldPosition) -> Option<VoxelType> {
+        if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
             return None;
         }
 
-        let chunk_x = x.div_euclid(CHUNK_WIDTH as i32);
-        let chunk_z = z.div_euclid(CHUNK_WIDTH as i32);
-        let local_x = x.rem_euclid(CHUNK_WIDTH as i32) as usize;
-        let local_y = y as usize;
-        let local_z = z.rem_euclid(CHUNK_WIDTH as i32) as usize;
-        let local_pos = VoxelPosition { x: local_x, y: local_y, z: local_z };
+        let local_x = pos.x.rem_euclid(CHUNK_WIDTH as i32) as usize;
+        let local_y = pos.y as usize;
+        let local_z = pos.z.rem_euclid(CHUNK_WIDTH as i32) as usize;
 
-        let chunk_position = ChunkPosition::new(chunk_x, chunk_z);
-        self.chunks.get(&chunk_position)
-            .map(|chunk| chunk[local_pos])
+        let local_pos = VoxelPosition::new(local_x, local_y, local_z);
+
+        let chunk = self.get_chunk(pos)?;
+        Some(chunk[local_pos])
     }
 
-    pub fn try_get_neighbor_chunk(&self, position: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {
+    pub fn get_chunk(&self, pos: WorldPosition) -> Option<&Chunk> {
+        let chunk_x = pos.x.div_euclid(CHUNK_WIDTH as i32);
+        let chunk_z = pos.z.div_euclid(CHUNK_WIDTH as i32);
+        let chunk_position = ChunkPosition::new(chunk_x, chunk_z);
+        self.chunks.get(&chunk_position)
+    }
+
+    pub fn get_chunk_neighbor(&self, position: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {
         let neighbor_position = ChunkPosition::new(position.x + dx,position.z + dz);
         self.chunks.get(&neighbor_position)
     }

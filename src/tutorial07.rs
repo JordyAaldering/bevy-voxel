@@ -301,7 +301,7 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
                 };
 
                 if dx != 0 || dz != 0 {
-                    if let Some(neighbor_chunk) = world.try_get_neighbor_chunk(chunk_pos, dx, dz) {
+                    if let Some(neighbor_chunk) = world.get_chunk_neighbor(chunk_pos, dx, dz) {
                         let (x, y, z) = (pos.x, pos.y, pos.z);
                         let (nx, ny, nz) = match direction {
                             FaceDirection::Right => (0, y, z),
@@ -579,7 +579,8 @@ fn collides(world: &VoxelWorld, position: Vec3) -> bool {
     for z in min_z..=max_z {
         for y in min_y..=max_y {
             for x in min_x..=max_x {
-                if world.get_voxel(x, y, z).is_some_and(|v| !v.is_transparent()) {
+                let global_pos = WorldPosition::new(x, y, z);
+                if world.get_voxel(global_pos).is_some_and(|v| !v.is_transparent()) {
                     return true;
                 }
             }

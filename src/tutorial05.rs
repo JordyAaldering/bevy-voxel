@@ -205,7 +205,7 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
                 };
 
                 if dx != 0 || dz != 0 {
-                    if let Some(neighbor_chunk) = world.try_get_neighbor_chunk(chunk_pos, dx, dz) {
+                    if let Some(neighbor_chunk) = world.get_chunk_neighbor(chunk_pos, dx, dz) {
                         let (x, y, z) = (pos.x, pos.y, pos.z);
                         let (nx, ny, nz) = match face {
                             FaceDirection::Right => (0, y, z),
