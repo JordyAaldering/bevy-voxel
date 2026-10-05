@@ -2,7 +2,7 @@
 name = "voxel"
 version = "0.1.0"
 edition = "2024"
-default-run = "tutorial07"
+default-run = "tutorial08"
 
 [[bin]]
 name = "tutorial01"
@@ -31,6 +31,10 @@ path = "src/tutorial06.rs"
 [[bin]]
 name = "tutorial07"
 path = "src/tutorial07.rs"
+
+[[bin]]
+name = "tutorial08"
+path = "src/tutorial08.rs"
 
 [profile.dev]
 opt-level = 1

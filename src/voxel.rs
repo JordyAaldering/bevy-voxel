@@ -3,6 +3,7 @@ use bevy::math::{Vec3, vec3};
 use crate::chunk::{CHUNK_WIDTH, CHUNK_HEIGHT};
 
 /// A voxel's position in world space.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WorldPosition {
     pub x: i32,
     pub y: i32,
