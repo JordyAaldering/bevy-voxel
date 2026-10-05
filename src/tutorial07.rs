@@ -14,6 +14,8 @@ use crate::{chunk::*, face::*, texture_atlas::{TextureAtlas, TextureAtlasPositio
 struct CameraSettings {
     #[inspector(min = 0.1, max = 20.0)]
     move_speed: f32,
+    #[inspector(min = 0.1, max = 20.0)]
+    jump_strenght: f32,
     #[inspector(min = 0.0001, max = 0.01)]
     mouse_sensitivity: f32,
 }
@@ -22,6 +24,7 @@ impl Default for CameraSettings {
     fn default() -> Self {
         Self {
             move_speed: 5.0,
+            jump_strenght: 7.0,
             mouse_sensitivity: 0.002,
         }
     }
@@ -31,9 +34,6 @@ const PLAYER_WIDTH: f32 = 0.6;
 const PLAYER_HEIGHT: f32 = 1.8;
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
-
-const PLAYER_SPEED: f32 = 5.0;
-const JUMP_SPEED: f32 = 7.0;
 const GRAVITY: f32 = 20.0;
 
 #[derive(Resource, Default, PartialEq, Eq)]
@@ -416,19 +416,19 @@ fn player_move(
                 &mut transform,
                 &mut player,
                 movement,
+                &settings,
                 &keyboard,
                 &world,
                 time.delta_secs(),
             );
         }
-
         GameMode::Spectator => {
             move_spectator(
                 &mut transform,
                 &mut player,
                 movement,
+                &settings,
                 &keyboard,
-                settings.move_speed,
                 time.delta_secs(),
             );
         }
@@ -439,59 +439,49 @@ fn move_survival(
     transform: &mut Transform,
     player: &mut Player,
     movement: Vec3,
+    settings: &CameraSettings,
     keyboard: &ButtonInput<KeyCode>,
     world: &VoxelWorld,
     dt: f32,
 ) {
-    player.velocity.x = movement.x * PLAYER_SPEED;
-    player.velocity.z = movement.z * PLAYER_SPEED;
+    player.velocity.x = movement.x * settings.move_speed;
+    player.velocity.z = movement.z * settings.move_speed;
 
     if player.grounded && keyboard.just_pressed(KeyCode::Space) {
-        player.velocity.y = JUMP_SPEED;
+        player.velocity.y = settings.jump_strenght;
         player.grounded = false;
     }
 
     player.velocity.y -= GRAVITY * dt;
 
-    move_with_collisions(
-        &mut transform.translation,
-        player,
-        world,
-        dt,
-    );
+    move_with_collisions(&mut transform.translation, player, world, dt);
 }
 
 fn move_spectator(
     transform: &mut Transform,
     player: &mut Player,
     mut movement: Vec3,
+    settings: &CameraSettings,
     keyboard: &ButtonInput<KeyCode>,
-    speed: f32,
     dt: f32,
 ) {
     player.velocity = Vec3::ZERO;
     player.grounded = false;
 
     if keyboard.pressed(KeyCode::Space) {
-        movement += Vec3::Y;
+        movement.y += 1.0;
     }
 
     if keyboard.pressed(KeyCode::ShiftLeft) {
-        movement -= Vec3::Y;
+        movement.y -= 1.0;
     }
 
-    transform.translation += movement.normalize_or_zero() * speed * dt;
+    transform.translation += movement.normalize_or_zero() * settings.move_speed * dt;
 }
 
-fn move_with_collisions(
-    position: &mut Vec3,
-    player: &mut Player,
-    world: &VoxelWorld,
-    dt: f32,
-) {
+fn move_with_collisions(position: &mut Vec3, player: &mut Player, world: &VoxelWorld, dt: f32) {
     player.grounded = false;
 
-    // X
     let old_x = position.x;
     position.x += player.velocity.x * dt;
 
@@ -500,7 +490,6 @@ fn move_with_collisions(
         player.velocity.x = 0.0;
     }
 
-    // Y
     let old_y = position.y;
     position.y += player.velocity.y * dt;
 
@@ -513,7 +502,6 @@ fn move_with_collisions(
         player.velocity.y = 0.0;
     }
 
-    // Z
     let old_z = position.z;
     position.z += player.velocity.z * dt;
 
