@@ -140,7 +140,7 @@ fn main() {
             toggle_gamemode,
             player_look,
             player_move,
-            break_block,
+            draw_selected_voxel,break_block,
         ))
         .run();
 }
@@ -636,6 +636,34 @@ fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
             }
         }
     }
+}
+
+fn draw_selected_voxel(
+    mut gizmos: Gizmos,
+    world: Res<VoxelWorld>,
+    camera: Single<&GlobalTransform, With<PlayerCamera>>,
+) {
+    let Some(hit) = find_voxel(
+        &world,
+        camera.translation(),
+        *camera.forward(),
+    ) else {
+        return;
+    };
+
+    let origin = vec3(
+        hit.position.x as f32,
+        hit.position.y as f32,
+        hit.position.z as f32,
+    );
+
+    let face = Face::new(origin, hit.face);
+    let vertices = face.vertices();
+
+    gizmos.line(vertices[0], vertices[1], Color::WHITE);
+    gizmos.line(vertices[1], vertices[3], Color::WHITE);
+    gizmos.line(vertices[3], vertices[2], Color::WHITE);
+    gizmos.line(vertices[2], vertices[0], Color::WHITE);
 }
 
 fn break_block(
