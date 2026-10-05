@@ -1,10 +1,11 @@
 mod chunk;
 mod face;
+mod world;
 
-use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, platform::collections::HashMap, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::{chunk::*, face::*};
+use crate::{chunk::*, face::*, world::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -21,18 +22,6 @@ impl Default for CameraSettings {
             move_speed: 5.0,
             mouse_sensitivity: 0.002,
         }
-    }
-}
-
-#[derive(Default, Resource)]
-struct World {
-    chunks: HashMap<ChunkPosition, Chunk>,
-}
-
-impl World {
-    fn try_get_neighbor_chunk(&self, position: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {
-        let neighbor_position = ChunkPosition::new(position.x + dx,position.z + dz);
-        self.chunks.get(&neighbor_position)
     }
 }
 
@@ -115,7 +104,7 @@ fn main() {
                 ..default()
             })
         )
-        .init_resource::<World>()
+        .init_resource::<VoxelWorld>()
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_plugins(EguiPlugin::default())
@@ -155,7 +144,7 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<World>) -> Result {
+fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result {
     egui::Window::new("Chunks").show(contexts.ctx_mut()?, |ui| {
         ui.label(format!("Loaded chunks: {}", world.chunks.len()));
 
@@ -186,7 +175,7 @@ fn spawn_world(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut world: ResMut<World>,
+    mut world: ResMut<VoxelWorld>,
 ) {
     let texture: Handle<Image> = asset_server.load("blocks.png");
 
@@ -233,7 +222,7 @@ fn generate_chunk(pos: ChunkPosition) -> Chunk {
     chunk
 }
 
-fn generate_chunk_mesh(world: &World, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
+fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
     let mut mesh = MeshData::default();
 
     let atlas = TextureAtlas { width: 4, height: 4 };

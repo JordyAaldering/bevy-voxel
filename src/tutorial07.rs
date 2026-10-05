@@ -1,10 +1,11 @@
-mod face;
 mod chunk;
+mod face;
+mod world;
 
-use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, platform::collections::HashMap, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::{chunk::*, face::*};
+use crate::{chunk::*, face::*, world::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -48,34 +49,6 @@ struct Player {
 
 #[derive(Component)]
 struct PlayerCamera;
-
-#[derive(Default, Resource)]
-struct World {
-    chunks: HashMap<ChunkPosition, Chunk>,
-}
-
-impl World {
-    fn get_voxel(&self, x: i32, y: i32, z: i32) -> Option<VoxelType> {
-        if y < 0 || y >= CHUNK_HEIGHT as i32 {
-            return None;
-        }
-
-        let chunk_x = x.div_euclid(CHUNK_WIDTH as i32);
-        let chunk_z = z.div_euclid(CHUNK_WIDTH as i32);
-        let local_x = x.rem_euclid(CHUNK_WIDTH as i32) as usize;
-        let local_y = y as usize;
-        let local_z = z.rem_euclid(CHUNK_WIDTH as i32) as usize;
-
-        let chunk_position = ChunkPosition::new(chunk_x, chunk_z);
-        self.chunks.get(&chunk_position)
-            .map(|chunk| chunk[(local_x, local_y, local_z)])
-    }
-
-    fn try_get_neighbor_chunk(&self, position: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {
-        let neighbor_position = ChunkPosition::new(position.x + dx,position.z + dz);
-        self.chunks.get(&neighbor_position)
-    }
-}
 
 #[derive(Default)]
 struct MeshData {
@@ -156,7 +129,7 @@ fn main() {
                 ..default()
             })
         )
-        .init_resource::<World>()
+        .init_resource::<VoxelWorld>()
         .init_resource::<GameMode>()
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
@@ -210,7 +183,7 @@ fn spawn_player(mut commands: Commands) {
         });
 }
 
-fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<World>) -> Result {
+fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result {
     egui::Window::new("Chunks").show(contexts.ctx_mut()?, |ui| {
         ui.label(format!("Loaded chunks: {}", world.chunks.len()));
 
@@ -241,7 +214,7 @@ fn spawn_world(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut world: ResMut<World>,
+    mut world: ResMut<VoxelWorld>,
 ) {
     let texture: Handle<Image> = asset_server.load("blocks.png");
 
@@ -288,7 +261,7 @@ fn generate_chunk(pos: ChunkPosition) -> Chunk {
     chunk
 }
 
-fn generate_chunk_mesh(world: &World, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
+fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
     let mut mesh = MeshData::default();
 
     let atlas = TextureAtlas { width: 4, height: 4 };
@@ -438,7 +411,7 @@ fn player_move(
     keyboard: Res<ButtonInput<KeyCode>>,
     mode: Res<GameMode>,
     settings: Res<CameraSettings>,
-    world: Res<World>,
+    world: Res<VoxelWorld>,
     player: Single<(&mut Transform, &mut Player)>,
 ) {
     let (mut transform, mut player) = player.into_inner();
@@ -490,7 +463,7 @@ fn move_survival(
     player: &mut Player,
     movement: Vec3,
     keyboard: &ButtonInput<KeyCode>,
-    world: &World,
+    world: &VoxelWorld,
     dt: f32,
 ) {
     player.velocity.x = movement.x * PLAYER_SPEED;
@@ -536,7 +509,7 @@ fn move_spectator(
 fn move_with_collisions(
     position: &mut Vec3,
     player: &mut Player,
-    world: &World,
+    world: &VoxelWorld,
     dt: f32,
 ) {
     player.grounded = false;
@@ -573,7 +546,7 @@ fn move_with_collisions(
     }
 }
 
-fn collides(world: &World, position: Vec3) -> bool {
+fn collides(world: &VoxelWorld, position: Vec3) -> bool {
     let half_width = PLAYER_WIDTH / 2.0;
 
     let min = vec3(
