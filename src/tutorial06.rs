@@ -50,6 +50,13 @@ impl VoxelType {
         }
     }
 
+    fn is_solid(&self) -> bool {
+        match self {
+            Self::Air => false,
+            _ => true,
+        }
+    }
+
     fn texture(self, face: FaceDirection) -> TextureAtlasPosition {
         match self {
             Self::Air => unreachable!(),

@@ -44,7 +44,7 @@ impl VoxelType {
     fn is_transparent(&self) -> bool {
         match self {
             Self::Air => true,
-            Self::Grass => false,
+            _ => false,
         }
     }
 }

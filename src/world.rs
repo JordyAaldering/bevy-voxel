@@ -12,7 +12,7 @@ pub struct VoxelWorld {
 impl VoxelWorld {
     pub fn is_solid(&self, pos: WorldPosition) -> bool {
         self.get_voxel(pos)
-            .is_some_and(|voxel| !voxel.is_transparent())
+            .is_some_and(|voxel| voxel.is_solid())
     }
 
     pub fn get_voxel(&self, pos: WorldPosition) -> Option<VoxelType> {

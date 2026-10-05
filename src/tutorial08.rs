@@ -87,6 +87,13 @@ impl VoxelType {
         }
     }
 
+    fn is_solid(&self) -> bool {
+        match self {
+            Self::Air => false,
+            _ => false,
+        }
+    }
+
     fn texture(self, face: FaceDirection) -> TextureAtlasPosition {
         match self {
             Self::Air => unreachable!(),
@@ -177,7 +184,7 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result 
         ui.separator();
 
         for (position, chunk) in &world.chunks {
-            let solid_voxels = chunk.iter().filter(|(_pos, voxel)| !voxel.is_transparent()).count();
+            let solid_voxels = chunk.iter().filter(|(_pos, voxel)| voxel.is_solid()).count();
 
             ui.collapsing(
                 format!("Chunk ({}, {})", position.x, position.z),
