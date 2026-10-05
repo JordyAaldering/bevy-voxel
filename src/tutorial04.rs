@@ -1,10 +1,11 @@
 mod chunk;
 mod face;
+mod voxel;
 
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::{chunk::*, face::*};
+use crate::{chunk::*, face::*, voxel::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -105,7 +106,8 @@ fn spawn_voxel(
     for x in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
             for z in 0..CHUNK_WIDTH {
-                chunk[(x, y, z)] = VoxelType::Grass;
+                let pos = VoxelPosition::new(x, y, z);
+                chunk[pos] = VoxelType::Grass;
             }
         }
     }
@@ -120,12 +122,12 @@ fn spawn_voxel(
 fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
     let mut mesh = MeshData::default();
 
-    for (x, y, z, voxel) in chunk.iter() {
+    for (pos, voxel) in chunk.iter() {
         if voxel == VoxelType::Air {
             continue;
         }
 
-        let origin = vec3(x as f32, y as f32, z as f32);
+        let origin = pos.origin();
 
         for face in [
             FaceDirection::Right,
@@ -135,7 +137,7 @@ fn generate_chunk_mesh(chunk: &Chunk) -> Mesh {
             FaceDirection::Front,
             FaceDirection::Back,
         ] {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, face) {
+            if let Some(neighbor) = chunk.get_neighbor_voxel(pos, face) {
                 if !neighbor.is_transparent() {
                     continue;
                 }

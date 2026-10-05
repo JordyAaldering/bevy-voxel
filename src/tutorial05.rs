@@ -1,11 +1,12 @@
 mod chunk;
 mod face;
+mod voxel;
 mod world;
 
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::{chunk::*, face::*, world::*};
+use crate::{chunk::*, face::*, voxel::*, world::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -105,7 +106,7 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result 
         ui.separator();
 
         for (position, chunk) in &world.chunks {
-            let solid_voxels = chunk.iter().filter(|(_, _, _, voxel)| !voxel.is_transparent()).count();
+            let solid_voxels = chunk.iter().filter(|(_pos, voxel)| !voxel.is_transparent()).count();
 
             ui.collapsing(
                 format!("Chunk ({}, {})", position.x, position.z),
@@ -159,7 +160,8 @@ fn generate_chunk(pos: ChunkPosition) -> Chunk {
     for x in 0..CHUNK_WIDTH {
         for y in 0..(((pos.x + pos.z) as usize % CHUNK_HEIGHT) + 1) {
             for z in 0..CHUNK_WIDTH {
-                chunk[(x, y, z)] = VoxelType::Grass;
+                let pos = VoxelPosition::new(x, y, z);
+                chunk[pos] = VoxelType::Grass;
             }
         }
     }
@@ -170,12 +172,12 @@ fn generate_chunk(pos: ChunkPosition) -> Chunk {
 fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
     let mut mesh = MeshData::default();
 
-    for (x, y, z, voxel) in chunk.iter() {
+    for (pos, voxel) in chunk.iter() {
         if voxel == VoxelType::Air {
             continue;
         }
 
-        let origin = vec3(x as f32, y as f32, z as f32);
+        let origin = pos.origin();
 
         for face in [
             FaceDirection::Right,
@@ -185,7 +187,7 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
             FaceDirection::Front,
             FaceDirection::Back,
         ] {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, face) {
+            if let Some(neighbor) = chunk.get_neighbor_voxel(pos, face) {
                 if !neighbor.is_transparent() {
                     continue;
                 }
@@ -204,6 +206,7 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
 
                 if dx != 0 || dz != 0 {
                     if let Some(neighbor_chunk) = world.try_get_neighbor_chunk(chunk_pos, dx, dz) {
+                        let (x, y, z) = (pos.x, pos.y, pos.z);
                         let (nx, ny, nz) = match face {
                             FaceDirection::Right => (0, y, z),
                             FaceDirection::Left => (CHUNK_WIDTH - 1, y, z),
@@ -212,7 +215,8 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
                             FaceDirection::Top => unreachable!(),
                             FaceDirection::Bottom => unreachable!(),
                         };
-                        if !neighbor_chunk[(nx, ny, nz)].is_transparent() {
+                        let neighbor_pos = VoxelPosition::new(nx, ny, nz);
+                        if !neighbor_chunk[neighbor_pos].is_transparent() {
                             continue;
                         }
                     } else {

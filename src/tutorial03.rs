@@ -1,9 +1,10 @@
 mod face;
+mod voxel;
 
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::face::{Face, FaceDirection};
+use crate::{face::*, voxel::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -20,24 +21,6 @@ impl Default for CameraSettings {
             move_speed: 5.0,
             mouse_sensitivity: 0.002,
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct Voxel {
-    x: usize,
-    y: usize,
-    z: usize,
-}
-
-impl Voxel {
-    pub fn from_coordinates(x: usize, y: usize, z: usize) -> Self {
-        Self { x, y, z }
-    }
-
-    /// Front-bottom-left corner of the voxel: (0,0,0) in this voxel's local space.
-    pub fn origin(&self) -> Vec3 {
-        Vec3::new(self.x as f32, self.y as f32, self.z as f32)
     }
 }
 
@@ -94,7 +77,7 @@ fn spawn_voxel(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let voxel = Voxel::from_coordinates(0, 0, 0);
+    let voxel = VoxelPosition::new(0, 0, 0);
     commands.spawn((
         Transform::from_translation(voxel.origin()),
         Mesh3d(meshes.add(generate_voxel_mesh(&voxel))),
@@ -102,7 +85,7 @@ fn spawn_voxel(
     ));
 }
 
-fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
+fn generate_voxel_mesh(voxel: &VoxelPosition) -> Mesh {
     let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
     let mut indices = Vec::with_capacity(6 * 6); // 6 indices per face (2 triangles)
     let mut normals = Vec::with_capacity(6 * 4); // 4 normals per face

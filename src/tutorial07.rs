@@ -191,7 +191,7 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result 
         ui.separator();
 
         for (position, chunk) in &world.chunks {
-            let solid_voxels = chunk.iter().filter(|(_, _, _, voxel)| !voxel.is_transparent()).count();
+            let solid_voxels = chunk.iter().filter(|(_pos, voxel)| !voxel.is_transparent()).count();
 
             ui.collapsing(
                 format!("Chunk ({}, {})", position.x, position.z),
@@ -250,10 +250,11 @@ fn generate_chunk(pos: ChunkPosition) -> Chunk {
         let max_y = (pos.x + pos.z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
             for z in 0..CHUNK_WIDTH {
+                let pos = VoxelPosition::new(x, y, z);
                 if y == max_y {
-                    chunk[(x, y, z)] = VoxelType::Grass;
+                    chunk[pos] = VoxelType::Grass;
                 } else {
-                    chunk[(x, y, z)] = VoxelType::Dirt;
+                    chunk[pos] = VoxelType::Dirt;
                 }
             }
         }
@@ -267,12 +268,12 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
 
     let atlas = TextureAtlas { width: 4, height: 4 };
 
-    for (x, y, z, voxel) in chunk.iter() {
+    for (pos, voxel) in chunk.iter() {
         if voxel == VoxelType::Air {
             continue;
         }
 
-        let origin = vec3(x as f32, y as f32, z as f32);
+        let origin = pos.origin();
 
         for direction in [
             FaceDirection::Right,
@@ -282,7 +283,7 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
             FaceDirection::Front,
             FaceDirection::Back,
         ] {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, direction) {
+            if let Some(neighbor) = chunk.get_neighbor_voxel(pos, direction) {
                 if !neighbor.is_transparent() {
                     continue;
                 }
@@ -301,6 +302,7 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
 
                 if dx != 0 || dz != 0 {
                     if let Some(neighbor_chunk) = world.try_get_neighbor_chunk(chunk_pos, dx, dz) {
+                        let (x, y, z) = (pos.x, pos.y, pos.z);
                         let (nx, ny, nz) = match direction {
                             FaceDirection::Right => (0, y, z),
                             FaceDirection::Left => (CHUNK_WIDTH - 1, y, z),
@@ -309,7 +311,8 @@ fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPositi
                             FaceDirection::Top => unreachable!(),
                             FaceDirection::Bottom => unreachable!(),
                         };
-                        if !neighbor_chunk[(nx, ny, nz)].is_transparent() {
+                        let neighbor_pos = VoxelPosition::new(nx, ny, nz);
+                        if !neighbor_chunk[neighbor_pos].is_transparent() {
                             continue;
                         }
                     } else {

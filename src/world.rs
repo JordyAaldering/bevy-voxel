@@ -1,6 +1,6 @@
 use bevy::{prelude::*, platform::collections::HashMap};
 
-use crate::chunk::*;
+use crate::{chunk::*, voxel::VoxelPosition};
 
 use super::VoxelType;
 
@@ -20,10 +20,11 @@ impl VoxelWorld {
         let local_x = x.rem_euclid(CHUNK_WIDTH as i32) as usize;
         let local_y = y as usize;
         let local_z = z.rem_euclid(CHUNK_WIDTH as i32) as usize;
+        let local_pos = VoxelPosition { x: local_x, y: local_y, z: local_z };
 
         let chunk_position = ChunkPosition::new(chunk_x, chunk_z);
         self.chunks.get(&chunk_position)
-            .map(|chunk| chunk[(local_x, local_y, local_z)])
+            .map(|chunk| chunk[local_pos])
     }
 
     pub fn try_get_neighbor_chunk(&self, position: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {

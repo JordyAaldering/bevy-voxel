@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use bevy::math::{Vec3, vec3};
 
-use crate::face::FaceDirection;
+use crate::{face::FaceDirection, voxel::VoxelPosition};
 
 use super::VoxelType;
 
@@ -40,14 +40,16 @@ impl Default for Chunk {
 }
 
 impl Chunk {
-    pub fn xyz_to_index(x: usize, y: usize, z: usize) -> usize {
+    pub fn pos_to_index(pos: VoxelPosition) -> usize {
+        let (x, y, z) = (pos.x, pos.y, pos.z);
         debug_assert!(x < CHUNK_WIDTH);
         debug_assert!(y < CHUNK_HEIGHT);
         debug_assert!(z < CHUNK_WIDTH);
         x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
 
-    pub fn get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: FaceDirection) -> Option<VoxelType> {
+    pub fn get_neighbor_voxel(&self, pos: VoxelPosition, direction: FaceDirection) -> Option<VoxelType> {
+        let (x, y, z) = (pos.x, pos.y, pos.z);
         let (nx, ny, nz) = match direction {
             FaceDirection::Right => (x + 1, y, z),
             FaceDirection::Left => (x.wrapping_sub(1), y, z),
@@ -58,38 +60,40 @@ impl Chunk {
         };
 
         if nx < CHUNK_WIDTH && ny < CHUNK_HEIGHT && nz < CHUNK_WIDTH {
-            let idx = Self::xyz_to_index(nx, ny, nz);
+            let pos = VoxelPosition { x: nx, y: ny, z: nz };
+            let idx = Self::pos_to_index(pos);
             Some(self.voxels[idx])
         } else {
             None
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, VoxelType)> {
+    pub fn iter(&self) -> impl Iterator<Item = (VoxelPosition, VoxelType)> {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {
                 (0..CHUNK_WIDTH).map(move |x| {
-                    let idx = Self::xyz_to_index(x, y, z);
+                    let pos = VoxelPosition { x, y, z };
+                    let idx = Self::pos_to_index(pos);
                     let voxel = self.voxels[idx];
-                    (x, y, z, voxel)
+                    (pos, voxel)
                 })
             })
         })
     }
 }
 
-impl Index<(usize, usize, usize)> for Chunk {
+impl Index<VoxelPosition> for Chunk {
     type Output = VoxelType;
 
-    fn index(&self, (x, y, z): (usize, usize, usize)) -> &Self::Output {
-        let idx = Self::xyz_to_index(x, y, z);
+    fn index(&self, pos: VoxelPosition) -> &Self::Output {
+        let idx = Self::pos_to_index(pos);
         &self.voxels[idx]
     }
 }
 
-impl IndexMut<(usize, usize, usize)> for Chunk {
-    fn index_mut(&mut self, (x, y, z): (usize, usize, usize)) -> &mut Self::Output {
-        let idx = Self::xyz_to_index(x, y, z);
+impl IndexMut<VoxelPosition> for Chunk {
+    fn index_mut(&mut self, pos: VoxelPosition) -> &mut Self::Output {
+        let idx = Self::pos_to_index(pos);
         &mut self.voxels[idx]
     }
 }
