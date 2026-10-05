@@ -37,7 +37,7 @@ const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
 const GRAVITY: f32 = 20.0;
 
-// Prevents exact boundary contact from being treated as an overlap with the adjacent voxel.
+/// Prevents exact boundary contact from being treated as an overlap with the adjacent voxel.
 const COLLISION_EPSILON: f32 = 1e-3;
 
 #[derive(Resource, Default, PartialEq, Eq)]
@@ -375,10 +375,9 @@ fn player_look(
         return;
     }
 
-    // Horizontal movement rotates the entire player around the world's Y axis.
+    // Horizontal movement rotates the entire player around the world Y axis
     player.rotate_y(-delta.x * settings.mouse_sensitivity);
-
-    // Vertical movement rotates only the camera around its local X axis.
+    // Vertical movement rotates only the camera around its local X axis
     let (yaw, mut pitch, roll) = camera.rotation.to_euler(EulerRot::YXZ);
 
     pitch -= delta.y * settings.mouse_sensitivity;
@@ -439,28 +438,6 @@ fn player_move(
     }
 }
 
-fn move_survival(
-    transform: &mut Transform,
-    player: &mut Player,
-    movement: Vec3,
-    settings: &CameraSettings,
-    keyboard: &ButtonInput<KeyCode>,
-    world: &VoxelWorld,
-    dt: f32,
-) {
-    player.velocity.x = movement.x * settings.move_speed;
-    player.velocity.z = movement.z * settings.move_speed;
-
-    if player.grounded && keyboard.just_pressed(KeyCode::Space) {
-        player.velocity.y = settings.jump_strenght;
-        player.grounded = false;
-    }
-
-    player.velocity.y -= GRAVITY * dt;
-
-    move_with_collisions(&mut transform.translation, player, world, dt);
-}
-
 fn move_spectator(
     transform: &mut Transform,
     player: &mut Player,
@@ -481,6 +458,28 @@ fn move_spectator(
     }
 
     transform.translation += movement.normalize_or_zero() * settings.move_speed * dt;
+}
+
+fn move_survival(
+    transform: &mut Transform,
+    player: &mut Player,
+    movement: Vec3,
+    settings: &CameraSettings,
+    keyboard: &ButtonInput<KeyCode>,
+    world: &VoxelWorld,
+    dt: f32,
+) {
+    player.velocity.x = movement.x * settings.move_speed;
+    player.velocity.z = movement.z * settings.move_speed;
+
+    if player.grounded && keyboard.just_pressed(KeyCode::Space) {
+        player.velocity.y = settings.jump_strenght;
+        player.grounded = false;
+    }
+
+    player.velocity.y -= GRAVITY * dt;
+
+    move_with_collisions(&mut transform.translation, player, world, dt);
 }
 
 fn move_with_collisions(position: &mut Vec3, player: &mut Player, world: &VoxelWorld, dt: f32) {
@@ -510,13 +509,12 @@ fn move_y(
 
     if velocity.y < 0.0 {
         // Falling
-        let voxel_y = position.y.floor() as i32;
+        let y = position.y.floor() as i32;
 
         for x in min_x..=max_x {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(x, voxel_y, z)) {
-                    // Put the player's feet exactly on top of the voxel
-                    position.y = voxel_y as f32 + 1.0;
+                if world.is_solid(WorldPosition::new(x, y, z)) {
+                    position.y = y as f32 + 1.0;
                     velocity.y = 0.0;
                     *grounded = true;
                     return;
@@ -526,13 +524,12 @@ fn move_y(
     } else {
         // Jumping
         let top = position.y + PLAYER_HEIGHT;
-        let voxel_y = (top - COLLISION_EPSILON).floor() as i32;
+        let y = (top - COLLISION_EPSILON).floor() as i32;
 
         for x in min_x..=max_x {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(x, voxel_y, z)) {
-                    // Put the player's head exactly below the voxel
-                    position.y = voxel_y as f32 - PLAYER_HEIGHT;
+                if world.is_solid(WorldPosition::new(x, y, z)) {
+                    position.y = y as f32 - PLAYER_HEIGHT;
                     velocity.y = 0.0;
                     return;
                 }
@@ -555,12 +552,12 @@ fn move_x(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
 
     if velocity.x > 0.0 {
         let right = position.x + PLAYER_WIDTH_HALF;
-        let voxel_x = (right - COLLISION_EPSILON).floor() as i32;
+        let x = (right - COLLISION_EPSILON).floor() as i32;
 
         for y in min_y..=max_y {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(voxel_x, y, z)) {
-                    position.x = voxel_x as f32 - PLAYER_WIDTH_HALF;
+                if world.is_solid(WorldPosition::new(x, y, z)) {
+                    position.x = x as f32 - PLAYER_WIDTH_HALF;
                     velocity.x = 0.0;
                     return;
                 }
@@ -568,12 +565,12 @@ fn move_x(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
         }
     } else {
         let left = position.x - PLAYER_WIDTH_HALF;
-        let voxel_x = left.floor() as i32;
+        let x = left.floor() as i32;
 
         for y in min_y..=max_y {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(voxel_x, y, z)) {
-                    position.x = voxel_x as f32 + 1.0 + PLAYER_WIDTH_HALF;
+                if world.is_solid(WorldPosition::new(x, y, z)) {
+                    position.x = x as f32 + 1.0 + PLAYER_WIDTH_HALF;
                     velocity.x = 0.0;
                     return;
                 }
@@ -596,13 +593,13 @@ fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
 
     if velocity.z > 0.0 {
         let front = position.z + PLAYER_WIDTH_HALF;
-        let voxel_z = (front - COLLISION_EPSILON).floor() as i32;
+        let z = (front - COLLISION_EPSILON).floor() as i32;
 
         for x in min_x..=max_x {
             for y in min_y..=max_y {
-                if world.is_solid(WorldPosition::new(x, y, voxel_z)) {
+                if world.is_solid(WorldPosition::new(x, y, z)) {
                     // Put the player's front edge against the voxel
-                    position.z = voxel_z as f32 - PLAYER_WIDTH_HALF;
+                    position.z = z as f32 - PLAYER_WIDTH_HALF;
                     velocity.z = 0.0;
                     return;
                 }
@@ -610,13 +607,13 @@ fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
         }
     } else {
         let back = position.z - PLAYER_WIDTH_HALF;
-        let voxel_z = back.floor() as i32;
+        let z = back.floor() as i32;
 
         for x in min_x..=max_x {
             for y in min_y..=max_y {
-                if world.is_solid(WorldPosition::new(x, y, voxel_z)) {
+                if world.is_solid(WorldPosition::new(x, y, z)) {
                     // Put the player's back edge against the voxel
-                    position.z = voxel_z as f32 + 1.0 + PLAYER_WIDTH_HALF;
+                    position.z = z as f32 + 1.0 + PLAYER_WIDTH_HALF;
                     velocity.z = 0.0;
                     return;
                 }
