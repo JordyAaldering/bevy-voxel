@@ -123,7 +123,7 @@ impl Face {
 
 impl FaceDirection {
     /// Returns an outward-facing normal vector for the face direction.
-    pub fn normal(&self) -> Vec3 {
+    fn normal(&self) -> Vec3 {
         match self {
             Self::Right  => vec3( 1.0, 0.0, 0.0),
             Self::Left   => vec3(-1.0, 0.0, 0.0),

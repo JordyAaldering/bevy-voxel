@@ -27,8 +27,9 @@ impl Default for Chunk {
 
 impl Chunk {
     pub fn get_neighbor_voxel(&self, pos: VoxelPosition, direction: FaceDirection) -> Option<VoxelType> {
-        let (x, y, z) = (pos.x, pos.y, pos.z);
-        let (nx, ny, nz) = match direction {
+        let VoxelPosition { x, y, z } = pos;
+
+        let (x, y, z) = match direction {
             FaceDirection::Right => (x + 1, y, z),
             FaceDirection::Left => (x.wrapping_sub(1), y, z),
             FaceDirection::Top => (x, y + 1, z),
@@ -37,8 +38,8 @@ impl Chunk {
             FaceDirection::Back => (x, y, z.wrapping_sub(1)),
         };
 
-        if nx < CHUNK_WIDTH && ny < CHUNK_HEIGHT && nz < CHUNK_WIDTH {
-            let pos = VoxelPosition { x: nx, y: ny, z: nz };
+        if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
+            let pos = VoxelPosition { x, y, z };
             let idx = pos.to_index();
             Some(self.voxels[idx])
         } else {

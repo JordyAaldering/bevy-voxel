@@ -25,6 +25,9 @@ pub struct VoxelPosition {
 
 impl VoxelPosition {
     pub fn new(x: usize, y: usize, z: usize) -> Self {
+        debug_assert!(x < CHUNK_WIDTH);
+        debug_assert!(y < CHUNK_HEIGHT);
+        debug_assert!(z < CHUNK_WIDTH);
         Self { x, y, z }
     }
 
@@ -33,10 +36,6 @@ impl VoxelPosition {
     }
 
     pub fn to_index(self) -> usize {
-        let (x, y, z) = (self.x, self.y, self.z);
-        debug_assert!(x < CHUNK_WIDTH);
-        debug_assert!(y < CHUNK_HEIGHT);
-        debug_assert!(z < CHUNK_WIDTH);
-        x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
+        self.x + CHUNK_WIDTH * (self.y + CHUNK_HEIGHT * self.z)
     }
 }
