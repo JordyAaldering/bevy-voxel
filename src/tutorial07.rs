@@ -1,4 +1,5 @@
 mod chunk;
+mod chunk_mesh;
 mod face;
 mod texture_atlas;
 mod voxel;
@@ -228,7 +229,7 @@ fn spawn_world(
 }
 
 fn generate_chunk(pos: ChunkPosition) -> Chunk {
-    let mut chunk = Chunk::default();
+    let mut chunk = Chunk::new(pos);
 
     for x in 0..CHUNK_WIDTH {
         let max_y = (pos.x + pos.z) as usize % CHUNK_HEIGHT;

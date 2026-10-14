@@ -1,4 +1,5 @@
 mod chunk;
+mod chunk_mesh;
 mod face;
 mod texture_atlas;
 mod voxel;
@@ -7,7 +8,7 @@ mod world;
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::{chunk::*, face::*, texture_atlas::{TextureAtlas, TextureAtlasPosition}, voxel::*, world::*};
+use crate::{chunk::*, chunk_mesh::*, face::*, texture_atlas::TextureAtlas, voxel::*, world::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -63,51 +64,6 @@ struct Player {
 
 #[derive(Component)]
 struct PlayerCamera;
-
-#[derive(Default)]
-struct MeshData {
-    vertices: Vec<Vec3>,
-    indices: Vec<u32>,
-    normals: Vec<Vec3>,
-    uvs: Vec<Vec2>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VoxelType {
-    Air,
-    Grass,
-    Dirt,
-}
-
-impl VoxelType {
-    fn is_transparent(&self) -> bool {
-        match self {
-            Self::Air => true,
-            _ => false,
-        }
-    }
-
-    fn is_solid(&self) -> bool {
-        match self {
-            Self::Air => false,
-            _ => true,
-        }
-    }
-
-    fn texture(self, face: FaceDirection) -> TextureAtlasPosition {
-        match self {
-            Self::Air => unreachable!(),
-            Self::Grass => {
-                match face {
-                    FaceDirection::Top => TextureAtlasPosition::new(3, 1),
-                    FaceDirection::Bottom => TextureAtlasPosition::new(1, 0),
-                    _ => TextureAtlasPosition::new(2, 0),
-                }
-            },
-            Self::Dirt => TextureAtlasPosition::new(1, 0),
-        }
-    }
-}
 
 fn main() {
     App::new()
@@ -238,7 +194,7 @@ fn spawn_world(
 }
 
 fn generate_chunk(pos: ChunkPosition) -> Chunk {
-    let mut chunk = Chunk::default();
+    let mut chunk = Chunk::new(pos);
 
     for x in 0..CHUNK_WIDTH {
         let max_y = (pos.x + pos.z) as usize % CHUNK_HEIGHT;
