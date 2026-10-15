@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "guide09"
-path = "src/guide09.rs"
+name = "main"
+path = "src/guide10.rs"
 
 [profile.dev]
 opt-level = 1
