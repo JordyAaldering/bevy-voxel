@@ -92,16 +92,23 @@ fn main() {
             spawn_player,
             setup_chunk_material,
         ))
-        .add_systems(Update, (
+        .add_systems(PreUpdate, (
+            // These all depend on user input
             toggle_cursor,
             toggle_gamemode,
             player_look,
             player_move,
+            break_block,
+        ))
+        .add_systems(Update, (
             draw_selected_voxel,
             spawn_chunks_around_player,
-            break_block,
-            remesh_chunks.after(break_block).after(spawn_chunks_around_player),
-            despawn_retired_chunks,
+            retire_distant_chunks,
+            remesh_chunks,
+        ))
+        .add_systems(PostUpdate, (
+            // Do this at the end, because other systems might modify this chunk first
+            retire_distant_chunks,
         ))
         .run();
 }
@@ -185,6 +192,16 @@ fn setup_chunk_material(
     commands.insert_resource(ChunkMaterial(material));
 }
 
+const CHUNK_LOAD_RADIUS: i32 = 1;
+
+fn player_chunk_position(player: &Transform) -> ChunkPosition {
+    world_to_chunk_position(WorldPosition::new(
+        player.translation.x.floor() as i32,
+        0,
+        player.translation.z.floor() as i32,
+    ))
+}
+
 /// Ensures the chunk the player is in, and the 8 chunks around it, exist.
 /// Spawned chunks are only marked with `NeedsRemesh`; `remesh_chunks` meshes them.
 fn spawn_chunks_around_player(
@@ -193,21 +210,38 @@ fn spawn_chunks_around_player(
     material: Res<ChunkMaterial>,
     player: Single<&Transform, With<Player>>,
 ) {
-    let center = world_to_chunk_position(WorldPosition::new(
-        player.translation.x.floor() as i32,
-        0,
-        player.translation.z.floor() as i32,
-    ));
+    let center = player_chunk_position(&player);
 
-    for dz in -1..=1 {
-        for dx in -1..=1 {
+    for dz in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
+        for dx in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
             let position = ChunkPosition::new(center.x + dx, center.z + dz);
-            if world.chunks.contains_key(&position) {
+            if world.is_loaded(position) {
                 continue;
             }
 
             let entity = world.spawn_chunk(&mut commands, position);
             commands.entity(entity).insert(MeshMaterial3d(material.0.clone()));
+        }
+    }
+}
+
+/// Marks chunks outside the player's 3x3 area with `NeedsDespawn`, and unmarks
+/// chunks that are back inside it. `despawn_retired_chunks` does the actual removal.
+fn retire_distant_chunks(
+    mut commands: Commands,
+    player: Single<&Transform, With<Player>>,
+    chunks: Query<(Entity, &Chunk, Has<NeedsDespawn>)>,
+) {
+    let center = player_chunk_position(&player);
+
+    for (entity, chunk, retired) in &chunks {
+        let in_range = (chunk.position.x - center.x).abs() <= CHUNK_LOAD_RADIUS
+            && (chunk.position.z - center.z).abs() <= CHUNK_LOAD_RADIUS;
+
+        if !in_range && !retired {
+            commands.entity(entity).insert(NeedsDespawn);
+        } else if in_range && retired {
+            commands.entity(entity).remove::<NeedsDespawn>();
         }
     }
 }

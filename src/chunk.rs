@@ -12,7 +12,8 @@ pub const CHUNK_HEIGHT: usize = 64;
 pub struct ChunkData {
     position: ChunkPosition,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
-    entity: Entity,
+    /// `None` while the chunk is unloaded: the data is kept, but there is no entity.
+    entity: Option<Entity>,
 }
 
 /// ECS side of a chunk. The voxel data itself lives in [`VoxelWorld`], keyed by this position.
@@ -44,12 +45,21 @@ impl ChunkData {
         Self {
             position,
             voxels: [VoxelType::Air; _],
-            entity,
+            entity: Some(entity),
         }
     }
 
-    pub fn entity(&self) -> Entity {
+    pub fn entity(&self) -> Option<Entity> {
         self.entity
+    }
+
+    pub fn set_entity(&mut self, entity: Entity) {
+        debug_assert!(self.entity.is_none(), "ChunkData already has an entity");
+        self.entity = Some(entity);
+    }
+
+    pub fn clear_entity(&mut self) {
+        self.entity = None;
     }
 
     pub fn position(&self) -> ChunkPosition {

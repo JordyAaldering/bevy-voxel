@@ -25,6 +25,12 @@ impl VoxelWorld {
         self.chunks.get(&chunk_pos).map(|chunk| chunk[voxel_pos])
     }
 
+    pub fn is_loaded(&self, position: ChunkPosition) -> bool {
+        self.chunks.get(&position).is_some_and(|chunk| chunk.entity().is_some())
+    }
+
+    /// Spawns an entity for the chunk at `position`. The voxel data is generated only
+    /// if it does not exist yet, so earlier modifications survive unloading.
     pub fn spawn_chunk(&mut self, commands: &mut Commands, position: ChunkPosition) -> Entity {
         let entity = commands.spawn((
             Chunk::new(position),
@@ -32,7 +38,28 @@ impl VoxelWorld {
             NeedsRemesh,
         )).id();
 
-        let mut chunk = ChunkData::new(position, entity);
+        if let Some(chunk) = self.chunks.get_mut(&position) {
+            chunk.set_entity(entity);
+        } else {
+            let mut chunk = ChunkData::new(position, entity);
+            Self::generate(&mut chunk);
+            self.chunks.insert(position, chunk);
+        }
+
+        // Existing neighbors previously treated this side as open, so their border faces change
+        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            if let Some(neighbor) = self.get_chunk_neighbor(position, dx, dz) {
+                if let Some(neighbor_entity) = neighbor.entity() {
+                    commands.entity(neighbor_entity).insert(NeedsRemesh);
+                }
+            }
+        }
+
+        entity
+    }
+
+    fn generate(chunk: &mut ChunkData) {
+        let position = chunk.position();
 
         for x in 0..CHUNK_WIDTH {
             let world_x = position.x * CHUNK_WIDTH as i32 + x as i32;
@@ -55,16 +82,6 @@ impl VoxelWorld {
             }
         }
 
-        self.chunks.insert(position, chunk);
-
-        // Existing neighbors previously treated this side as open, so their border faces change
-        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-            if let Some(neighbor) = self.get_chunk_neighbor(position, dx, dz) {
-                commands.entity(neighbor.entity()).insert(NeedsRemesh);
-            }
-        }
-
-        entity
     }
 
     pub fn set_voxel(&mut self, commands: &mut Commands, pos: WorldPosition, voxel: VoxelType) {
@@ -72,25 +89,35 @@ impl VoxelWorld {
         let chunk_pos = world_to_chunk_position(pos);
         let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
         chunk[voxel_pos] = voxel;
-        commands.entity(chunk.entity()).insert(NeedsRemesh);
+        if let Some(entity) = chunk.entity() {
+            commands.entity(entity).insert(NeedsRemesh);
+        }
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
         if voxel_pos.x == 0 {
             if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, -1, 0) {
-                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+                if let Some(entity) = neighbor.entity() {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
             }
         } else if voxel_pos.x == CHUNK_WIDTH - 1 {
             if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 1, 0) {
-                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+                if let Some(entity) = neighbor.entity() {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
             }
         }
         if voxel_pos.z == 0 {
             if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, -1) {
-                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+                if let Some(entity) = neighbor.entity() {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
             }
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
             if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, 1) {
-                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+                if let Some(entity) = neighbor.entity() {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
             }
         }
     }
@@ -142,11 +169,15 @@ pub fn remesh_chunks(
 
 pub fn despawn_retired_chunks(
     mut commands: Commands,
+    mut world: ResMut<VoxelWorld>,
     retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
 ) {
     for (entity, chunk) in &retired_chunks {
         log::info!("Despawning chunk ({}, {})", chunk.position.x, chunk.position.z);
+        // Keep the voxel data; only the entity goes away
+        if let Some(data) = world.chunks.get_mut(&chunk.position) {
+            data.clear_entity();
+        }
         commands.entity(entity).despawn();
     }
 }
-
