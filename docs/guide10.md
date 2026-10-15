@@ -12,9 +12,7 @@ Whenever a visible mesh is some distance away from the player, we disable that c
 
 Just like the `NeedsRemesh` component, we add a `NeedsDespawn`.
 
-## More cameras
-
-To test if this works, we need to be able to move the camera without moving the player.
+I'll deliberately keep the radius very small (only the chunks directly around the player are generated and kept alive) so that it is clear to see what is going on.
 
 ## Tracking state of disabled meshes
 

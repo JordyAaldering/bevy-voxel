@@ -90,7 +90,7 @@ fn main() {
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_player,
-            spawn_world,
+            setup_chunk_material,
         ))
         .add_systems(Update, (
             toggle_cursor,
@@ -98,8 +98,9 @@ fn main() {
             player_look,
             player_move,
             draw_selected_voxel,
+            spawn_chunks_around_player,
             break_block,
-            remesh_chunks.after(break_block),
+            remesh_chunks.after(break_block).after(spawn_chunks_around_player),
             despawn_retired_chunks,
         ))
         .run();
@@ -168,26 +169,45 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result 
     Ok(())
 }
 
-fn spawn_world(
+#[derive(Resource)]
+struct ChunkMaterial(Handle<StandardMaterial>);
+
+fn setup_chunk_material(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut world: ResMut<VoxelWorld>,
 ) {
     let texture: Handle<Image> = asset_server.load("blocks.png");
-
-    let material: Handle<StandardMaterial> = materials.add(StandardMaterial {
+    let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
         ..default()
     });
+    commands.insert_resource(ChunkMaterial(material));
+}
 
-    // Chunks are only marked as needing a mesh here; `remesh_chunks` builds them
-    // once all chunks exist, so neighbor lookups see the complete world.
-    for z in -1..=1 {
-        for x in -1..=1 {
-            let position = ChunkPosition::new(x, z);
+/// Ensures the chunk the player is in, and the 8 chunks around it, exist.
+/// Spawned chunks are only marked with `NeedsRemesh`; `remesh_chunks` meshes them.
+fn spawn_chunks_around_player(
+    mut commands: Commands,
+    mut world: ResMut<VoxelWorld>,
+    material: Res<ChunkMaterial>,
+    player: Single<&Transform, With<Player>>,
+) {
+    let center = world_to_chunk_position(WorldPosition::new(
+        player.translation.x.floor() as i32,
+        0,
+        player.translation.z.floor() as i32,
+    ));
+
+    for dz in -1..=1 {
+        for dx in -1..=1 {
+            let position = ChunkPosition::new(center.x + dx, center.z + dz);
+            if world.chunks.contains_key(&position) {
+                continue;
+            }
+
             let entity = world.spawn_chunk(&mut commands, position);
-            commands.entity(entity).insert(MeshMaterial3d(material.clone()));
+            commands.entity(entity).insert(MeshMaterial3d(material.0.clone()));
         }
     }
 }

@@ -56,6 +56,14 @@ impl VoxelWorld {
         }
 
         self.chunks.insert(position, chunk);
+
+        // Existing neighbors previously treated this side as open, so their border faces change
+        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            if let Some(neighbor) = self.get_chunk_neighbor(position, dx, dz) {
+                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+            }
+        }
+
         entity
     }
 
@@ -93,7 +101,7 @@ impl VoxelWorld {
     }
 }
 
-fn world_to_chunk_position(pos: WorldPosition) -> ChunkPosition {
+pub fn world_to_chunk_position(pos: WorldPosition) -> ChunkPosition {
     let chunk_x = pos.x.div_euclid(CHUNK_WIDTH as i32);
     let chunk_z = pos.z.div_euclid(CHUNK_WIDTH as i32);
     ChunkPosition::new(chunk_x, chunk_z)
