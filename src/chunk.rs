@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut};
 
-use bevy::math::{Vec3, vec3};
+use bevy::prelude::*;
 
 use crate::{chunk_mesh::MeshData, face::{Face, FaceDirection}, texture_atlas::TextureAtlas, voxel::VoxelPosition, world::VoxelWorld};
 
@@ -9,11 +9,21 @@ use super::VoxelType;
 pub const CHUNK_WIDTH: usize = 3;
 pub const CHUNK_HEIGHT: usize = 4;
 
-pub struct Chunk {
+pub struct ChunkData {
     position: ChunkPosition,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
-    mesh: MeshData,
+    entity: Entity,
 }
+
+/// ECS side of a chunk. The voxel data itself lives in [`VoxelWorld`], keyed by this position.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Chunk {
+    pub position: ChunkPosition,
+}
+
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub struct NeedsRemesh;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkPosition {
@@ -23,19 +33,30 @@ pub struct ChunkPosition {
 
 impl Chunk {
     pub fn new(position: ChunkPosition) -> Self {
+        Self { position }
+    }
+}
+
+impl ChunkData {
+    pub fn new(position: ChunkPosition, entity: Entity) -> Self {
         Self {
             position,
             voxels: [VoxelType::Air; _],
-            mesh: MeshData::default(),
+            entity,
         }
+    }
+
+    pub fn entity(&self) -> Entity {
+        self.entity
     }
 
     pub fn position(&self) -> ChunkPosition {
         self.position
     }
 
-    pub fn render(&mut self, world: &VoxelWorld) {
+    pub fn build_mesh(&self, world: &VoxelWorld) -> Mesh {
         let atlas = TextureAtlas::new(4, 4);
+        let mut mesh = MeshData::new(atlas);
 
         for z in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
@@ -98,16 +119,13 @@ impl Chunk {
 
                 let face = Face::new(origin, direction);
                 let texture = voxel.texture(direction);
-
-                let start = self.mesh.vertices.len() as u32;
-                self.mesh.vertices.extend_from_slice(&face.vertices());
-                self.mesh.indices.extend_from_slice(&face.indices(start));
-                self.mesh.normals.extend_from_slice(&face.normals());
-                self.mesh.uvs.extend_from_slice(&atlas.uvs(texture));
+                mesh.add_face(face, texture);
             }
         }
         }
         }
+
+        mesh.build()
     }
 
     pub fn get_neighbor_voxel(&self, pos: VoxelPosition, direction: FaceDirection) -> Option<VoxelType> {
@@ -144,7 +162,7 @@ impl Chunk {
     }
 }
 
-impl Index<VoxelPosition> for Chunk {
+impl Index<VoxelPosition> for ChunkData {
     type Output = VoxelType;
 
     fn index(&self, pos: VoxelPosition) -> &Self::Output {
@@ -152,7 +170,7 @@ impl Index<VoxelPosition> for Chunk {
     }
 }
 
-impl IndexMut<VoxelPosition> for Chunk {
+impl IndexMut<VoxelPosition> for ChunkData {
     fn index_mut(&mut self, pos: VoxelPosition) -> &mut Self::Output {
         &mut self.voxels[pos.to_index()]
     }

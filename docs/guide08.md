@@ -40,6 +40,4 @@ struct NeedsRemesh;
 
 Or we can make `Chunk` a `Component`, and then use Bevy's `Changed<Chunk>` feature to automatically detect changes.
 Because the latter may also respond to changes that do not relate to the mesh, and because it does not respond to changes necessary to neighbouring chunks, I don't think that is the right approach.
-
-Using the marker seems like an interesting approach, but because we already go through the World to update chunks, the more natural place did end up being in the World, just using a HashSet.
-If you've developed your chunks to already be `Component`s, using markers might be the more natural approach.
+However, `NeedsRemesh` seems like a very natural fit for ECS. We anyway already have an entity for the chunk: the mesh itself.

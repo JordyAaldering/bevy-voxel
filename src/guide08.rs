@@ -5,10 +5,10 @@ mod texture_atlas;
 mod voxel;
 mod world;
 
-use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
-use crate::{chunk::*, chunk_mesh::*, face::*, texture_atlas::TextureAtlas, voxel::*, world::*};
+use crate::{chunk::*, face::*, voxel::*, world::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -98,6 +98,7 @@ fn main() {
             player_move,
             draw_selected_voxel,
             break_block,
+            remesh_chunks.after(break_block),
         ))
         .run();
 }
@@ -163,7 +164,6 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result 
 fn spawn_world(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut world: ResMut<VoxelWorld>,
 ) {
@@ -174,27 +174,19 @@ fn spawn_world(
         ..default()
     });
 
-    // We need to instantiate all chunks first
+    // Chunks are only marked as needing a mesh here; `remesh_chunks` builds them
+    // once all chunks exist, so neighbor lookups see the complete world.
     for z in -1..=1 {
         for x in -1..=1 {
             let position = ChunkPosition::new(x, z);
-            let chunk = generate_chunk(position);
-            world.chunks.insert(position, chunk);
+            let entity = world.spawn_chunk(&mut commands, position, generate_chunk);
+            commands.entity(entity).insert(MeshMaterial3d(material.clone()));
         }
-    }
-
-    // Now we can generate the meshes
-    for (&chunk_pos, chunk) in &world.chunks {
-        commands.spawn((
-            Transform::from_translation(chunk_pos.origin()),
-            Mesh3d(meshes.add(generate_chunk_mesh(&world, chunk, chunk_pos))),
-            MeshMaterial3d(material.clone()),
-        ));
     }
 }
 
-fn generate_chunk(pos: ChunkPosition) -> Chunk {
-    let mut chunk = Chunk::new(pos);
+fn generate_chunk(chunk: &mut ChunkData) {
+    let pos = chunk.position();
 
     for x in 0..CHUNK_WIDTH {
         let max_y = (pos.x + pos.z) as usize % CHUNK_HEIGHT;
@@ -209,85 +201,6 @@ fn generate_chunk(pos: ChunkPosition) -> Chunk {
             }
         }
     }
-
-    chunk
-}
-
-fn generate_chunk_mesh(world: &VoxelWorld, chunk: &Chunk, chunk_pos: ChunkPosition) -> Mesh {
-    let mut mesh = MeshData::default();
-
-    let atlas = TextureAtlas::new(4, 4);
-
-    for (pos, voxel) in chunk.iter() {
-        if voxel == VoxelType::Air {
-            continue;
-        }
-
-        let origin = pos.origin();
-
-        for direction in [
-            FaceDirection::Right,
-            FaceDirection::Left,
-            FaceDirection::Top,
-            FaceDirection::Bottom,
-            FaceDirection::Front,
-            FaceDirection::Back,
-        ] {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(pos, direction) {
-                if !neighbor.is_transparent() {
-                    continue;
-                }
-            } else {
-                // If chunk.get_neighbor_voxel returns None, it means that the neighbor is out of bounds.
-                // In that case, we need to check the neighboring chunk in the world
-                let (dx, dz) = match direction {
-                    FaceDirection::Right => (1, 0),
-                    FaceDirection::Left => (-1, 0),
-                    FaceDirection::Front => (0, 1),
-                    FaceDirection::Back => (0, -1),
-                    // We are at the build limit, so we always have to show this face
-                    FaceDirection::Top => (0, 0),
-                    FaceDirection::Bottom => (0, 0),
-                };
-
-                if dx != 0 || dz != 0 {
-                    if let Some(neighbor_chunk) = world.get_chunk_neighbor(chunk_pos, dx, dz) {
-                        let (x, y, z) = (pos.x, pos.y, pos.z);
-                        let (nx, ny, nz) = match direction {
-                            FaceDirection::Right => (0, y, z),
-                            FaceDirection::Left => (CHUNK_WIDTH - 1, y, z),
-                            FaceDirection::Front => (x, y, 0),
-                            FaceDirection::Back => (x, y, CHUNK_WIDTH - 1),
-                            FaceDirection::Top => unreachable!(),
-                            FaceDirection::Bottom => unreachable!(),
-                        };
-                        let neighbor_pos = VoxelPosition::new(nx, ny, nz);
-                        if !neighbor_chunk[neighbor_pos].is_transparent() {
-                            continue;
-                        }
-                    } else {
-                        // No neighboring chunk, so assume that we don't need to render this face
-                        continue;
-                    }
-                }
-            }
-
-            let face = Face::new(origin, direction);
-            let texture = voxel.texture(direction);
-
-            let start = mesh.vertices.len() as u32;
-            mesh.vertices.extend_from_slice(&face.vertices());
-            mesh.indices.extend_from_slice(&face.indices(start));
-            mesh.normals.extend_from_slice(&face.normals());
-            mesh.uvs.extend_from_slice(&atlas.uvs(texture));
-        }
-    }
-
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mesh.vertices)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mesh.normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mesh.uvs)
-        .with_inserted_indices(Indices::U32(mesh.indices))
 }
 
 fn toggle_cursor(
@@ -619,6 +532,7 @@ fn draw_selected_voxel(
 }
 
 fn break_block(
+    mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
     mut world: ResMut<VoxelWorld>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
@@ -632,7 +546,7 @@ fn break_block(
 
     if let Some(VoxelHit { position, face }) = find_voxel(&world, origin, *direction) {
         info!("Hit {:?} at {:?} face", position, face);
-        world.set_voxel(position, VoxelType::Air);
+        world.set_voxel(&mut commands, position, VoxelType::Air);
     }
 }
 
