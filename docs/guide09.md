@@ -52,6 +52,16 @@ Ultimately, they all follow a similar approach, so if we understand Simplex/Perl
 3. The vertex is hashed to determine the gradient.
 4. The contribution of each vertex of the simplex is combined. The input coordinate is subtracted to unskew the vector. The dot product then gives the gradient value. d^2 gives the squared distance to the point.
 
+### Testing the noise
+
+To test whether the noise function is correct, I've created a test file `examples/noise.rs`.
+We also need the `image` crate: `cargo add --dev image`.
+
+Turns out, there's a subtle difference in C# and Rust.
+In C#, the default overflow behaviour is to silently wrap the value.
+In the case of Rust, overflows will always cause a panic.
+Thus, we replace potentially overflowing and underflowing integer operations with `wrapping_add` etc.
+
 ## Terrain generation
 
 We can now use this `noise2` function, or whatever 2d noise function you have from your selected crate, to determine the height of each x-y coordinate in the world.
@@ -59,3 +69,7 @@ Thus, for every world position x and y, `noise2(x, y)` gives the `z` height at t
 
 We also add another voxel type: stone.
 The topmost voxel, at z, becomes grass, the three below it become dirt, and all others below it become stone.
+
+We also need to make sure to spawn the player at the correct height, so they don't appear in the ground.
+In the future we might also need to check, for example, if the player does not appear inside a structure like a tree or a building, or does not spawn right above a ravine or cave.
+For now, we can just use the heightmap data.

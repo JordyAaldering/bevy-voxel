@@ -1,6 +1,6 @@
 use bevy::{platform::collections::HashMap, prelude::*};
 
-use crate::{chunk::*, voxel::*};
+use crate::{chunk::*, opensimplex2s, voxel::*};
 
 use super::VoxelType;
 
@@ -25,22 +25,37 @@ impl VoxelWorld {
         self.chunks.get(&chunk_pos).map(|chunk| chunk[voxel_pos])
     }
 
-    /// Spawns a new chunk entity, fills it using `generate`, and marks it for meshing.
-    pub fn spawn_chunk(
-        &mut self,
-        commands: &mut Commands,
-        position: ChunkPosition,
-        generate: impl FnOnce(&mut ChunkData),
-    ) -> Entity {
+    pub fn spawn_chunk(&mut self, commands: &mut Commands, position: ChunkPosition) -> Entity {
         let entity = commands.spawn((
             Chunk::new(position),
             Transform::from_translation(position.origin()),
             NeedsRemesh,
         )).id();
 
-        let mut data = ChunkData::new(position, entity);
-        generate(&mut data);
-        self.chunks.insert(position, data);
+        let mut chunk = ChunkData::new(position, entity);
+
+        for x in 0..CHUNK_WIDTH {
+            let world_x = position.x * CHUNK_WIDTH as i32 + x as i32;
+            for z in 0..CHUNK_WIDTH {
+                let world_z = position.z * CHUNK_WIDTH as i32 + z as i32;
+
+                let height = (opensimplex2s::noise2d(0, world_x as f64 / 100.0, world_z as f64 / 100.0) * 10.0) as i32 + 20;
+                let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
+
+                // Top layer is grass
+                chunk[VoxelPosition::new(x, height, z)] = VoxelType::Grass;
+                // Three layers of dirt
+                for y in (height - 3).max(0)..height {
+                    chunk[VoxelPosition::new(x, y, z)] = VoxelType::Dirt;
+                }
+                // Below that is stone
+                for y in 0..(height - 3).max(0) {
+                    chunk[VoxelPosition::new(x, y, z)] = VoxelType::Stone;
+                }
+            }
+        }
+
+        self.chunks.insert(position, chunk);
         entity
     }
 

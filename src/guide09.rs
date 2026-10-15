@@ -118,13 +118,15 @@ fn spawn_global_illumination(mut commands: Commands) {
 }
 
 fn spawn_player(mut commands: Commands) {
+    // In future we need to ensure to use some configuration to determine the x/y scaling (not relevant here because zero), the scaling, and the offset.
+    let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
     commands
         .spawn((
             Player {
                 velocity: Vec3::ZERO,
                 grounded: false,
             },
-            Transform::from_xyz(1.5, 5.0, 1.5),
+            Transform::from_xyz(1.5, world_height as f32 + 1.0, 1.5),
         ))
         .with_children(|player| {
             player.spawn((
@@ -183,26 +185,8 @@ fn spawn_world(
     for z in -1..=1 {
         for x in -1..=1 {
             let position = ChunkPosition::new(x, z);
-            let entity = world.spawn_chunk(&mut commands, position, generate_chunk);
+            let entity = world.spawn_chunk(&mut commands, position);
             commands.entity(entity).insert(MeshMaterial3d(material.clone()));
-        }
-    }
-}
-
-fn generate_chunk(chunk: &mut ChunkData) {
-    let pos = chunk.position();
-
-    for x in 0..CHUNK_WIDTH {
-        let max_y = (pos.x + pos.z) as usize % CHUNK_HEIGHT;
-        for y in 0..=max_y {
-            for z in 0..CHUNK_WIDTH {
-                let pos = VoxelPosition::new(x, y, z);
-                if y == max_y {
-                    chunk[pos] = VoxelType::Grass;
-                } else {
-                    chunk[pos] = VoxelType::Dirt;
-                }
-            }
         }
     }
 }
