@@ -6,6 +6,17 @@ For that same reason I will often use external resources to explain certain conc
 
 If you just want a Voxel engine, use something like [bevy-voxel-world](https://crates.io/crates/bevy_voxel_world) rather than copying code from here.
 
+In particular, I want you to really try to understand what I write here.
+Especially in a world with tons of AI-generated content, people are more and more conditioned to just blindly read a text, 'one ear in and one ear out' (or I guess eye in this case), and not really think about it.
+(Deliberately put a sentence here that makes no sense).
+
+If the previous sentence did not bother you, you failed the first test.
+I encourage you to do your own research.
+I am no Bevy or game design professional, so I am sure that I do things in a suboptimal way.
+Anyway, everyone has their own development style.
+If something is unclear, please let me know in a GitHub issue.
+If you find out I've done something in a suboptimal way, (which can be rectified without making the guide more complex), please share.
+
 # Project setup
 
 A new version of Bevy containing breaking changes to the API is released approximately once every 3 months, so follow the Bevy [quick start](https://bevy.org/learn/quick-start) to get a simple project up-and-running.

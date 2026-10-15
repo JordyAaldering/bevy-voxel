@@ -100,8 +100,15 @@ That is perfect for the editor camera.
 
 Ideally you've been refactoring your code along the way, but if not, now is a good time to do so.
 Take 30 minutes to an hour to refactor your code.
+To be honest, whilst writing this guide I have not been doing so, and I know it will bite me in the ass later.
+I feel like we are now in a nice place; we have a player, infinite terrain generation, and a nice editor to inspect the world.
+The next step will be a big one: generating chunks in phases, which I suspect will require changes in multiple places, so we should refactor before that point.
 
 Split logic into files, ensure a good separation of concerns, and make sure your code is readable and maintainable.
+I also like to draw a diagram of all of my structures and systems, in which files they live, and how they depend on each other.
+Ideally, this should result in a tree with as little circular dependencies as possible.
+Use post-it notes, or maybe a whiteboard, if possible; this also lets you easily think about the design and move things around.
+It's actually really convenient to visually and interactively/physically think about your code!
 Take a close look over all the systems and resources, and see if you can improve the design.
 Are resources running in the right order, or are dependencies missing?
 

@@ -8,6 +8,10 @@ Once we combine multiple noise layers, and since our world is blocky anyway, thi
 
 ## Simplex Noise
 
+Don't read the Wikipedia article on Simplex noise, it is not very helpful.
+However, I found this video pretty clear: https://youtu.be/DxUY42r_6Cg.
+Some things are still a little unclear, but if you can explain that video in your own words you really need all you need to know.
+
 This is one of those cases where you can definitely skip this section and simply use a Perlin noise or Simplex crate, or whatever you would want to use.
 
 I'll go with OpenSimplex2S.
@@ -56,11 +60,25 @@ Ultimately, they all follow a similar approach, so if we understand Simplex/Perl
 
 To test whether the noise function is correct, I've created a test file `examples/noise.rs`.
 We also need the `image` crate: `cargo add --dev image`.
+I deliberately use the `examples` folder.
+I don't put it in the main sources, because I don't want to ship the `image` crate with the game.
+The `tests` folder is not suitable, because it is intended for many unit and integration tests run in parallel, not for visualizing an output.
 
 Turns out, there's a subtle difference in C# and Rust.
 In C#, the default overflow behaviour is to silently wrap the value.
 In the case of Rust, overflows will always cause a panic.
 Thus, we replace potentially overflowing and underflowing integer operations with `wrapping_add` etc.
+
+### Benchmarking the noise
+
+Another thing we can do is to benchmark the performance of the noise function.
+With the `criterion` crate we can conveniently test whether changes to the noise function have a negative impact on performance.
+(Though, always be aware that what works on your system might not translate, so don't waste time optimizing for few percentage changes.)
+
+## GPU implementation
+
+Is this hard with Bevy?
+Would be cool.
 
 ## Terrain generation
 

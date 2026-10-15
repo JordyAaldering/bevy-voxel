@@ -11,9 +11,12 @@ If so, we need to check if the corresponding voxel in that chunk is transparent.
 
 We only place chunks horizontally, so whenever the face is up or down we are simply at the build limit, and always have to show that face.
 
-We can further optimize this.
-If a chunk at the requested position does not exist, we can assume that it has not yet been necessary to generate it.
-Thus, the player won't be able to look from that side anyway, so if a chunk does not exist we also don't draw the faces.
+If a chunk is next to a chunk that has not been generated yet we have a more complicated situation.
+We'll have a similar problem laten when we start generating structures like trees at the edge of a chunk.
+Ultimitely: we'll split chunk generation in multiple phases, each requiring that all neighbouring chunks are all at least at the same phase before this chunk can continue with the next.
+In this case, that would mean that the height data of neighbouring chunks has to be known before we can decide which faces we need to draw.
+https://gamedev.stackexchange.com/questions/180163/how-do-minecraft-know-where-villages-buildings-are-if-the-village-is-not-genera
+For now, however, we'll just draw all faces.
 
 ## Egui debugging
 
