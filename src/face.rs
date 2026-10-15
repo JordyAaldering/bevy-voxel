@@ -7,11 +7,17 @@ pub struct Face {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FaceDirection {
+    /// Increasing x
     Right,
+    /// Decreasing x
     Left,
+    /// Increasing y
     Top,
+    /// Decreasing y
     Bottom,
+    /// Increasing z
     Front,
+    /// Decreasing z
     Back,
 }
 
@@ -38,7 +44,7 @@ impl Face {
     /// (0,0,1)-------------------(1,0,1)
     /// ```
     ///
-    /// Note that, in Bevy, the Z axis points forward, so the going back decreases the Z coordinate.
+    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
     pub fn vertices(&self) -> [Vec3; 4] {
         let o = self.origin;
 

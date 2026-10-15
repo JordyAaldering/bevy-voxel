@@ -41,3 +41,5 @@ struct NeedsRemesh;
 Or we can make `Chunk` a `Component`, and then use Bevy's `Changed<Chunk>` feature to automatically detect changes.
 Because the latter may also respond to changes that do not relate to the mesh, and because it does not respond to changes necessary to neighbouring chunks, I don't think that is the right approach.
 However, `NeedsRemesh` seems like a very natural fit for ECS. We anyway already have an entity for the chunk: the mesh itself.
+
+Remember that, if we modify a voxel on the edge of a chunk, we also need to modify the neighbouring chunk.
