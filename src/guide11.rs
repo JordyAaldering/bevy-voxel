@@ -9,7 +9,7 @@ mod world;
 
 use std::time::Duration;
 
-use bevy::{diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::{diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, light::DirectionalLightShadowMap, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
 use crate::{chunk::*, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
@@ -138,6 +138,8 @@ fn spawn_global_illumination(mut commands: Commands) {
         DirectionalLight {
             illuminance: 10_000.0,
             shadow_maps_enabled: true,
+            shadow_normal_bias: 1.0,
+            shadow_depth_bias: 0.05,
             ..default()
         },
         Transform::from_rotation(

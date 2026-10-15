@@ -90,6 +90,8 @@ fn spawn_global_illumination(mut commands: Commands) {
         DirectionalLight {
             illuminance: 10_000.0,
             shadow_maps_enabled: true,
+            shadow_normal_bias: 1.0,
+            shadow_depth_bias: 0.05,
             ..default()
         },
         Transform::from_rotation(
