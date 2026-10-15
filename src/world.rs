@@ -52,13 +52,21 @@ impl VoxelWorld {
         commands.entity(chunk.entity()).insert(NeedsRemesh);
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
-        let mut neighbors = Vec::with_capacity(2);
-        if voxel_pos.x == 0 { neighbors.push((-1, 0)); }
-        if voxel_pos.x == CHUNK_WIDTH - 1 { neighbors.push((1, 0)); }
-        if voxel_pos.z == 0 { neighbors.push((0, -1)); }
-        if voxel_pos.z == CHUNK_WIDTH - 1 { neighbors.push((0, 1)); }
-        for (dx, dz) in neighbors {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, dx, dz) {
+        if voxel_pos.x == 0 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, -1, 0) {
+                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+            }
+        } else if voxel_pos.x == CHUNK_WIDTH - 1 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 1, 0) {
+                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+            }
+        }
+        if voxel_pos.z == 0 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, -1) {
+                commands.entity(neighbor.entity()).insert(NeedsRemesh);
+            }
+        } else if voxel_pos.z == CHUNK_WIDTH - 1 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, 1) {
                 commands.entity(neighbor.entity()).insert(NeedsRemesh);
             }
         }
