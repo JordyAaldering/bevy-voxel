@@ -22,7 +22,7 @@ impl Default for CameraSettings {
     fn default() -> Self {
         Self {
             move_speed: 5.0,
-            mouse_sensitivity: 0.002,
+            mouse_sensitivity: 0.0025,
         }
     }
 }

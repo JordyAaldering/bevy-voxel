@@ -10,6 +10,8 @@ Instead, we should only generate chunks that are within some distance to the pla
 If the player has been exploring for a while, many chunks/meshes will still be active that the player can't even see.
 Whenever a visible mesh is some distance away from the player, we disable that chunk.
 
+Just like the `NeedsRemesh` component, we add a `NeedsDespawn`.
+
 ## More cameras
 
 To test if this works, we need to be able to move the camera without moving the player.

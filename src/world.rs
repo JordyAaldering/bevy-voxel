@@ -131,3 +131,14 @@ pub fn remesh_chunks(
         commands.entity(entity).remove::<NeedsRemesh>();
     }
 }
+
+pub fn despawn_retired_chunks(
+    mut commands: Commands,
+    retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
+) {
+    for (entity, chunk) in &retired_chunks {
+        log::info!("Despawning chunk ({}, {})", chunk.position.x, chunk.position.z);
+        commands.entity(entity).despawn();
+    }
+}
+

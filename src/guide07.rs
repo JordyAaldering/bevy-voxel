@@ -26,7 +26,7 @@ impl Default for CameraSettings {
         Self {
             move_speed: 5.0,
             jump_strenght: 7.0,
-            mouse_sensitivity: 0.002,
+            mouse_sensitivity: 0.0025,
         }
     }
 }

@@ -22,8 +22,10 @@ pub struct Chunk {
 }
 
 #[derive(Component)]
-#[component(storage = "SparseSet")]
 pub struct NeedsRemesh;
+
+#[derive(Component)]
+pub struct NeedsDespawn;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkPosition {

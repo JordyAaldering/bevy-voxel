@@ -27,7 +27,7 @@ impl Default for CameraSettings {
         Self {
             move_speed: 5.0,
             jump_strenght: 7.0,
-            mouse_sensitivity: 0.002,
+            mouse_sensitivity: 0.00255,
         }
     }
 }
@@ -100,6 +100,7 @@ fn main() {
             draw_selected_voxel,
             break_block,
             remesh_chunks.after(break_block),
+            despawn_retired_chunks,
         ))
         .run();
 }
