@@ -33,8 +33,9 @@ impl VoxelWorld {
     /// if it does not exist yet, so earlier modifications survive unloading.
     pub fn spawn_chunk(&mut self, commands: &mut Commands, position: ChunkPosition) -> Entity {
         let entity = commands.spawn((
-            Chunk::new(position),
+            Name::new(format!("Chunk ({}, {})", position.x, position.z)),
             Transform::from_translation(position.origin()),
+            Chunk::new(position),
             NeedsRemesh,
         )).id();
 

@@ -9,7 +9,7 @@ mod world;
 
 use std::time::Duration;
 
-use bevy::{diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, light::DirectionalLightShadowMap, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::{diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiContexts, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, egui, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
 
 use crate::{chunk::*, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
@@ -105,7 +105,6 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
-        .add_systems(EguiPrimaryContextPass, chunk_debug_ui)
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_player,
@@ -153,6 +152,7 @@ fn spawn_player(mut commands: Commands) {
     let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
     commands
         .spawn((
+            Name::new("Player"),
             Player {
                 velocity: Vec3::ZERO,
                 grounded: false,
@@ -170,32 +170,6 @@ fn spawn_player(mut commands: Commands) {
                 Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
             ));
         });
-}
-
-fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result {
-    egui::Window::new("Chunks").show(contexts.ctx_mut()?, |ui| {
-        ui.label(format!("Loaded chunks: {}", world.chunks.len()));
-
-        ui.separator();
-
-        for (position, chunk) in &world.chunks {
-            let solid_voxels = chunk.iter().filter(|(_pos, voxel)| voxel.is_solid()).count();
-
-            ui.collapsing(
-                format!("Chunk ({}, {})", position.x, position.z),
-               |ui| {
-                    ui.label(format!("Solid voxels: {}", solid_voxels));
-                    ui.label(format!(
-                        "World position: ({}, {})",
-                        position.x * CHUNK_WIDTH as i32,
-                        position.z * CHUNK_WIDTH as i32,
-                    ));
-                },
-            );
-        }
-    });
-
-    Ok(())
 }
 
 #[derive(Resource)]
