@@ -26,3 +26,12 @@ cargo add serde_json
 - `axum` is a web framework for Rust, which we can use to serve a dashboard.
 - `tokio` is an async runtime for Rust, which we need to run the web server outside the Bevy game loop. Otherwise, the web server would block the game loop.
 - `serde` and `serde_json` are used to serialize the metrics data to JSON, which can be easily consumed by the browser dashboard.
+
+## Feature gate
+
+If you ever share your game, you probably don't want to ship the debug dashboard with it.
+We can gate the debug dashboard, and the necessary dependencies, behind a feature flag.
+
+https://doc.rust-lang.org/cargo/reference/features.html
+
+I omit it for now, because I want to avoid recompilations when enabling/disabling certain flags.
