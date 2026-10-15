@@ -74,7 +74,7 @@ pub async fn run_server(receiver: watch::Receiver<Telemetry>) {
         .await
         .expect("Could not bind telemetry server");
 
-    println!("Telemetry dashboard: http://{address}");
+    log::info!("Telemetry dashboard: http://{address}");
 
     axum::serve(listener, app)
         .await
