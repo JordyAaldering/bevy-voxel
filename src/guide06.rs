@@ -162,6 +162,8 @@ fn spawn_world(
 
     let material: Handle<StandardMaterial> = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
+        perceptual_roughness: 0.9,
+        reflectance: 0.1,
         ..default()
     });
 

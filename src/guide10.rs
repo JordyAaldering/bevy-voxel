@@ -187,6 +187,8 @@ fn setup_chunk_material(
     let texture: Handle<Image> = asset_server.load("blocks.png");
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
+        perceptual_roughness: 0.9,
+        reflectance: 0.1,
         ..default()
     });
     commands.insert_resource(ChunkMaterial(material));
