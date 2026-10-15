@@ -75,7 +75,10 @@ struct Player {
 }
 
 #[derive(Component)]
-struct PlayerCamera;
+pub struct PlayerCamera;
+
+#[derive(Component)]
+pub struct EditorCamera;
 
 fn main() {
     let (sender, receiver) = tokio::sync::watch::channel(Telemetry::default());
@@ -116,19 +119,19 @@ fn main() {
         .register_type::<DebugGizmos>()
         .insert_resource(TelemetryPublisher(sender))
         .add_systems(EguiPrimaryContextPass, editor_tab_viewer::show_editor)
-        .add_systems(PostUpdate, editor_tab_viewer::set_camera_viewport.after(editor_tab_viewer::show_editor))
+        .add_systems(PostUpdate, editor_tab_viewer::update_view_targets.after(editor_tab_viewer::show_editor))
         .add_systems(Startup, (
             spawn_global_illumination,
-            spawn_player,
+            (editor_tab_viewer::setup_view_targets, spawn_player).chain(),
             setup_chunk_material,
         ))
         .add_systems(PreUpdate, (
             // These all depend on user input
             toggle_cursor,
             toggle_gamemode,
-            player_look,
-            player_move,
-            break_place_block,
+            (player_look, player_move, break_place_block)
+                .run_if(editor_tab_viewer::is_game_view_visible),
+            editor_camera.run_if(editor_tab_viewer::is_editor_view_visible),
         ))
         .add_systems(Update, (
             draw_selected_voxel,
@@ -180,14 +183,31 @@ fn spawn_global_illumination(mut commands: Commands) {
     ));
 }
 
-fn spawn_player(mut commands: Commands, mut egui_settings: ResMut<EguiGlobalSettings>) {
-    // Give egui its own camera, so the game camera can be restricted to the editor's game view
+fn spawn_player(
+    mut commands: Commands,
+    mut egui_settings: ResMut<EguiGlobalSettings>,
+    editor_state: Res<EditorState>,
+) {
+    // Egui gets its own camera; the game cameras render to images shown inside the editor
     egui_settings.auto_create_primary_context = false;
     commands.spawn((
         PrimaryEguiContext,
         Camera2d,
         RenderLayers::none(),
         Camera { order: 1, ..default() },
+    ));
+
+    commands.spawn((
+        Name::new("Editor Camera"),
+        EditorCamera,
+        Camera3d::default(),
+        Camera { is_active: false, ..default() },
+        editor_tab_viewer::editor_camera_target(&editor_state),
+        Projection::from(PerspectiveProjection {
+            fov: 70f32.to_radians(),
+            ..default()
+        }),
+        Transform::from_xyz(1.5, 40.0, 10.0).looking_at(Vec3::new(1.5, 20.0, 1.5), Vec3::Y),
     ));
 
     // In future we need to ensure to use some configuration to determine the x/y scaling (not relevant here because zero), the scaling, and the offset.
@@ -205,6 +225,7 @@ fn spawn_player(mut commands: Commands, mut egui_settings: ResMut<EguiGlobalSett
             player.spawn((
                 PlayerCamera,
                 Camera3d::default(),
+                editor_tab_viewer::game_camera_target(&editor_state),
                 Projection::from(PerspectiveProjection {
                     fov: 70f32.to_radians(),
                     ..default()
@@ -353,6 +374,39 @@ fn player_look(
     pitch = pitch.clamp(-MAX_PITCH, MAX_PITCH);
 
     camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
+}
+
+fn editor_camera(
+    time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mouse_motion: Res<AccumulatedMouseMotion>,
+    settings: Res<CameraSettings>,
+    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+    mut camera: Single<&mut Transform, With<EditorCamera>>,
+) {
+    // Don't move the camera if the cursor is released
+    if cursor.grab_mode == CursorGrabMode::None {
+        return;
+    }
+
+    let delta = mouse_motion.delta;
+    if delta != Vec2::ZERO {
+        let (mut yaw, mut pitch, _) = camera.rotation.to_euler(EulerRot::YXZ);
+        yaw -= delta.x * settings.mouse_sensitivity;
+        pitch = (pitch - delta.y * settings.mouse_sensitivity).clamp(-MAX_PITCH, MAX_PITCH);
+        camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+    }
+
+    let mut movement = Vec3::ZERO;
+    if keyboard.pressed(KeyCode::KeyW) { movement += *camera.forward(); }
+    if keyboard.pressed(KeyCode::KeyS) { movement += *camera.back(); }
+    if keyboard.pressed(KeyCode::KeyA) { movement += *camera.left(); }
+    if keyboard.pressed(KeyCode::KeyD) { movement += *camera.right(); }
+    if keyboard.pressed(KeyCode::Space) { movement += Vec3::Y; }
+    if keyboard.pressed(KeyCode::ShiftLeft) { movement -= Vec3::Y; }
+
+    let speed = settings.move_speed * 3.0;
+    camera.translation += movement.normalize_or_zero() * speed * time.delta_secs();
 }
 
 fn player_move(

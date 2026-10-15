@@ -90,7 +90,8 @@ Feel free to skip this step, but I think it is worth a look.
 
 The `bevy-inspector-egui` plugin already has an example for using `egui_dock`: https://github.com/jakobhellermann/bevy-inspector-egui/blob/main/crates/bevy-inspector-egui/examples/integrations/egui_dock.rs.
 
-egui_dock has two central concepts:
-- DockState: stores the layout, splits, and tabs.
-- TabViewer: determines what each tab displays.
-We'll use an enum for the tabs so adding new inspector panels stays straightforward.
+We can now also add an editor-camera, that we can freely move around in the world without moving the player.
+That allows us to inspect the world from different angles and to check if chunks are generated as expected, and is especially useful for debugging.
+
+Bevy 0.20 added a new Pan Orbit Camera: https://bevy.org/news/bevy-0-20/#pan-orbit-camera.
+That is perfect for the editor camera.

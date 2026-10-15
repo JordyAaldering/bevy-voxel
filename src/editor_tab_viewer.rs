@@ -1,27 +1,46 @@
-use bevy::{camera::Viewport, prelude::*, window::PrimaryWindow};
-use bevy_inspector_egui::{bevy_egui::{EguiContext, PrimaryEguiContext}, bevy_inspector::{self, hierarchy::{SelectedEntities, hierarchy_ui}, ui_for_entities_shared_components, ui_for_entity_with_children}};
+use bevy::{camera::RenderTarget, image::Image, prelude::*, render::render_resource::{Extent3d, TextureFormat}, window::PrimaryWindow};
+use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiTextureHandle, EguiUserTextures, PrimaryEguiContext}, bevy_inspector::{self, hierarchy::{SelectedEntities, hierarchy_ui}, ui_for_entities_shared_components, ui_for_entity_with_children}};
 use egui_dock::{DockArea, DockState, NodeIndex, Style, egui};
 use std::any::TypeId;
 
 #[derive(Clone, Debug)]
 pub enum EditorTab {
     GameView,
+    EditorView,
     Hierarchy,
     Resources,
     Inspector,
 }
 
+/// An offscreen image a camera renders to, which is displayed inside a dock tab.
+#[derive(Default)]
+struct ViewTarget {
+    image: Handle<Image>,
+    texture: egui::TextureId,
+    /// The area the tab occupied this frame, or `None` if the tab is not visible.
+    rect: Option<egui::Rect>,
+}
+
+impl ViewTarget {
+    fn show(&mut self, ui: &mut egui::Ui) {
+        let size = ui.available_size();
+        self.rect = Some(ui.available_rect_before_wrap());
+        ui.add(egui::Image::new(egui::load::SizedTexture::new(self.texture, size)));
+    }
+}
+
 #[derive(Resource)]
 pub struct EditorState {
     state: DockState<EditorTab>,
-    viewport_rect: egui::Rect,
+    game_view: ViewTarget,
+    editor_view: ViewTarget,
     selected_entities: SelectedEntities,
     selected_resource: Option<(TypeId, String)>,
 }
 
 impl Default for EditorState {
     fn default() -> Self {
-        let mut state = DockState::new(vec![EditorTab::GameView]);
+        let mut state = DockState::new(vec![EditorTab::GameView, EditorTab::EditorView]);
         let tree = state.main_surface_mut();
         let [game, _inspector] =
             tree.split_right(NodeIndex::root(), 0.75, vec![EditorTab::Inspector]);
@@ -30,7 +49,8 @@ impl Default for EditorState {
 
         Self {
             state,
-            viewport_rect: egui::Rect::NOTHING,
+            game_view: ViewTarget::default(),
+            editor_view: ViewTarget::default(),
             selected_entities: SelectedEntities::default(),
             selected_resource: None,
         }
@@ -39,7 +59,8 @@ impl Default for EditorState {
 
 struct EditorTabViewer<'w> {
     world: &'w mut World,
-    viewport_rect: &'w mut egui::Rect,
+    game_view: &'w mut ViewTarget,
+    editor_view: &'w mut ViewTarget,
     selected_entities: &'w mut SelectedEntities,
     selected_resource: &'w mut Option<(TypeId, String)>,
 }
@@ -50,6 +71,7 @@ impl egui_dock::TabViewer for EditorTabViewer<'_> {
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         match tab {
             EditorTab::GameView => "Game".into(),
+            EditorTab::EditorView => "Editor".into(),
             EditorTab::Hierarchy => "Hierarchy".into(),
             EditorTab::Resources => "Resources".into(),
             EditorTab::Inspector => "Inspector".into(),
@@ -58,7 +80,8 @@ impl egui_dock::TabViewer for EditorTabViewer<'_> {
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         match tab {
-            EditorTab::GameView => *self.viewport_rect = ui.clip_rect(),
+            EditorTab::GameView => self.game_view.show(ui),
+            EditorTab::EditorView => self.editor_view.show(ui),
             EditorTab::Hierarchy => {
                 if hierarchy_ui(self.world, ui, self.selected_entities) {
                     *self.selected_resource = None;
@@ -142,17 +165,18 @@ impl egui_dock::TabViewer for EditorTabViewer<'_> {
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
         egui::Id::new(format!("{tab:?}"))
     }
-
-    fn clear_background(&self, tab: &Self::Tab) -> bool {
-        !matches!(tab, EditorTab::GameView)
-    }
 }
 
 impl EditorState {
     fn ui(&mut self, ui: &mut egui::Ui, world: &mut World) {
+        // Only tabs that are visible this frame report a rect
+        self.game_view.rect = None;
+        self.editor_view.rect = None;
+
         let mut viewer = EditorTabViewer {
             world,
-            viewport_rect: &mut self.viewport_rect,
+            game_view: &mut self.game_view,
+            editor_view: &mut self.editor_view,
             selected_entities: &mut self.selected_entities,
             selected_resource: &mut self.selected_resource,
         };
@@ -191,26 +215,79 @@ pub fn show_editor(world: &mut World) {
     );
 }
 
-/// Makes the game camera only render to the part of the window not obstructed by the UI.
-pub fn set_camera_viewport(
+pub fn is_game_view_visible(editor_state: Res<EditorState>) -> bool {
+    editor_state.game_view.rect.is_some()
+}
+
+pub fn is_editor_view_visible(editor_state: Res<EditorState>) -> bool {
+    editor_state.editor_view.rect.is_some()
+}
+
+fn create_view_target(
+    images: &mut Assets<Image>,
+    egui_textures: &mut EguiUserTextures,
+) -> ViewTarget {
+    let image = images.add(Image::new_target_texture(
+        1280,
+        720,
+        TextureFormat::Bgra8UnormSrgb,
+        None,
+    ));
+    let texture = egui_textures.add_image(EguiTextureHandle::Strong(image.clone()));
+    ViewTarget { image, texture, rect: None }
+}
+
+/// Must run before the cameras are spawned.
+pub fn setup_view_targets(
+    mut editor_state: ResMut<EditorState>,
+    mut images: ResMut<Assets<Image>>,
+    mut egui_textures: ResMut<EguiUserTextures>,
+) {
+    editor_state.game_view = create_view_target(&mut images, &mut egui_textures);
+    editor_state.editor_view = create_view_target(&mut images, &mut egui_textures);
+}
+
+pub fn game_camera_target(editor_state: &EditorState) -> RenderTarget {
+    editor_state.game_view.image.clone().into()
+}
+
+pub fn editor_camera_target(editor_state: &EditorState) -> RenderTarget {
+    editor_state.editor_view.image.clone().into()
+}
+
+/// Resizes each camera's image to match its tab, and disables cameras whose tab is hidden.
+pub fn update_view_targets(
     editor_state: Res<EditorState>,
     window: Single<&Window, With<PrimaryWindow>>,
-    mut camera: Single<&mut Camera, Without<PrimaryEguiContext>>,
+    mut images: ResMut<Assets<Image>>,
+    mut game_camera: Single<&mut Camera, (With<crate::PlayerCamera>, Without<crate::EditorCamera>)>,
+    mut editor_camera: Single<&mut Camera, (With<crate::EditorCamera>, Without<crate::PlayerCamera>)>,
 ) {
     let scale_factor = window.scale_factor();
-    let position = editor_state.viewport_rect.left_top().to_vec2() * scale_factor;
-    let size = editor_state.viewport_rect.size() * scale_factor;
+    update_view_target(&editor_state.game_view, scale_factor, &mut images, &mut game_camera);
+    update_view_target(&editor_state.editor_view, scale_factor, &mut images, &mut editor_camera);
+}
 
-    let physical_position = UVec2::new(position.x as u32, position.y as u32);
-    let physical_size = UVec2::new(size.x as u32, size.y as u32);
+fn update_view_target(
+    view: &ViewTarget,
+    scale_factor: f32,
+    images: &mut Assets<Image>,
+    camera: &mut Camera,
+) {
+    let size = view.rect.map(|rect| {
+        let size = rect.size() * scale_factor;
+        UVec2::new(size.x as u32, size.y as u32)
+    });
 
-    let window_size = window.physical_size();
-    let end = physical_position + physical_size;
-    if physical_size.x > 0 && physical_size.y > 0 && end.x <= window_size.x && end.y <= window_size.y {
-        camera.viewport = Some(Viewport {
-            physical_position,
-            physical_size,
-            depth: 0.0..1.0,
-        });
+    let Some(size) = size.filter(|size| size.x > 0 && size.y > 0) else {
+        camera.is_active = false;
+        return;
+    };
+
+    camera.is_active = true;
+    if let Some(mut image) = images.get_mut(&view.image) {
+        if image.size() != size {
+            image.resize(Extent3d { width: size.x, height: size.y, depth_or_array_layers: 1 });
+        }
     }
 }
