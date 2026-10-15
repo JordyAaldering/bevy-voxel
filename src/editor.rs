@@ -3,7 +3,7 @@ use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiTextureHandle, EguiUserTe
 use egui_dock::{DockArea, DockState, NodeIndex, Style, egui};
 use std::any::TypeId;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum EditorTab {
     GameView,
     EditorView,
@@ -32,6 +32,7 @@ impl ViewTarget {
 #[derive(Resource)]
 pub struct EditorState {
     state: DockState<EditorTab>,
+    active_tab: Option<EditorTab>,
     game_view: ViewTarget,
     editor_view: ViewTarget,
     selected_entities: SelectedEntities,
@@ -42,13 +43,12 @@ impl Default for EditorState {
     fn default() -> Self {
         let mut state = DockState::new(vec![EditorTab::GameView, EditorTab::EditorView]);
         let tree = state.main_surface_mut();
-        let [game, _inspector] =
-            tree.split_right(NodeIndex::root(), 0.75, vec![EditorTab::Inspector]);
+        let [game, _inspector] = tree.split_right(NodeIndex::root(), 0.75, vec![EditorTab::Inspector]);
         let [game, _hierarchy] = tree.split_left(game, 0.2, vec![EditorTab::Hierarchy]);
         let [_game, _bottom] = tree.split_below(game, 0.8, vec![EditorTab::Resources]);
-
         Self {
             state,
+            active_tab: None,
             game_view: ViewTarget::default(),
             editor_view: ViewTarget::default(),
             selected_entities: SelectedEntities::default(),
@@ -168,6 +168,28 @@ impl egui_dock::TabViewer for EditorTabViewer<'_> {
 }
 
 impl EditorState {
+    pub fn is_game_view_visible(&self) -> bool {
+        self.game_view.rect.is_some()
+    }
+
+    /// Whether the game view is the tab that was last clicked in.
+    pub fn is_game_view_active(&self) -> bool {
+        matches!(self.active_tab, Some(EditorTab::GameView))
+    }
+
+    pub fn is_editor_view_active(&self) -> bool {
+        matches!(self.active_tab, Some(EditorTab::EditorView))
+    }
+
+    /// `position` is in logical window coordinates, which match egui's points.
+    pub fn game_view_contains(&self, position: Vec2) -> bool {
+        self.game_view.rect.is_some_and(|rect| rect.contains(egui::pos2(position.x, position.y)))
+    }
+
+    pub fn editor_view_contains(&self, position: Vec2) -> bool {
+        self.editor_view.rect.is_some_and(|rect| rect.contains(egui::pos2(position.x, position.y)))
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, world: &mut World) {
         // Only tabs that are visible this frame report a rect
         self.game_view.rect = None;
@@ -184,15 +206,17 @@ impl EditorState {
         DockArea::new(&mut self.state)
             .style(Style::from_egui(&ui.global_style()))
             .show_inside(ui, &mut viewer);
+
+        // Keep the last focused tab, so clicking empty space doesn't deactivate it
+        if let Some((_, tab)) = self.state.find_active_focused() {
+            self.active_tab = Some(tab.clone());
+        }
     }
 }
 
 pub fn show_editor(world: &mut World) {
     let Ok(mut egui_context) = world
-        .query_filtered::<
-            &mut EguiContext,
-            With<PrimaryEguiContext>,
-        >()
+        .query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
         .single_mut(world)
     else {
         return;
@@ -223,10 +247,7 @@ pub fn is_editor_view_visible(editor_state: Res<EditorState>) -> bool {
     editor_state.editor_view.rect.is_some()
 }
 
-fn create_view_target(
-    images: &mut Assets<Image>,
-    egui_textures: &mut EguiUserTextures,
-) -> ViewTarget {
+fn create_view_target(images: &mut Assets<Image>, egui_textures: &mut EguiUserTextures) -> ViewTarget {
     let image = images.add(Image::new_target_texture(
         1280,
         720,
@@ -237,7 +258,6 @@ fn create_view_target(
     ViewTarget { image, texture, rect: None }
 }
 
-/// Must run before the cameras are spawned.
 pub fn setup_view_targets(
     mut editor_state: ResMut<EditorState>,
     mut images: ResMut<Assets<Image>>,
@@ -255,7 +275,7 @@ pub fn editor_camera_target(editor_state: &EditorState) -> RenderTarget {
     editor_state.editor_view.image.clone().into()
 }
 
-/// Resizes each camera's image to match its tab, and disables cameras whose tab is hidden.
+/// Resizes each camera's image to match its tab, and disables cameras whose tab is hidden
 pub fn update_view_targets(
     editor_state: Res<EditorState>,
     window: Single<&Window, With<PrimaryWindow>>,

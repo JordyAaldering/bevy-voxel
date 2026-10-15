@@ -1,6 +1,6 @@
 mod chunk;
 mod chunk_mesh;
-mod editor_tab_viewer;
+mod editor;
 mod face;
 mod opensimplex2s;
 mod telemetry;
@@ -10,10 +10,10 @@ mod world;
 
 use std::time::Duration;
 
-use bevy::{camera::visibility::RenderLayers, diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiContext, EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, prelude::*};
+use bevy::{camera::visibility::RenderLayers, diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll}, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, prelude::*};
 
-use crate::{chunk::*, editor_tab_viewer::EditorState, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
+use crate::{chunk::*, editor::EditorState, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -118,20 +118,21 @@ fn main() {
         .register_type::<CameraSettings>()
         .register_type::<DebugGizmos>()
         .insert_resource(TelemetryPublisher(sender))
-        .add_systems(EguiPrimaryContextPass, editor_tab_viewer::show_editor)
-        .add_systems(PostUpdate, editor_tab_viewer::update_view_targets.after(editor_tab_viewer::show_editor))
+        .add_systems(EguiPrimaryContextPass, editor::show_editor)
+        .add_systems(PostUpdate, editor::update_view_targets.after(editor::show_editor))
         .add_systems(Startup, (
             spawn_global_illumination,
-            (editor_tab_viewer::setup_view_targets, spawn_player).chain(),
+            (editor::setup_view_targets, spawn_player).chain(),
             setup_chunk_material,
         ))
         .add_systems(PreUpdate, (
             // These all depend on user input
             toggle_cursor,
-            toggle_gamemode,
-            (player_look, player_move, break_place_block)
-                .run_if(editor_tab_viewer::is_game_view_visible),
-            editor_camera.run_if(editor_tab_viewer::is_editor_view_visible),
+            (toggle_gamemode, player_look, break_place_block)
+                .run_if(game_view_captured),
+            // Keeps running while uncaptured, so gravity still applies
+            player_move.run_if(editor::is_game_view_visible),
+            editor_camera_input.run_if(editor::is_editor_view_visible),
         ))
         .add_systems(Update, (
             draw_selected_voxel,
@@ -202,12 +203,12 @@ fn spawn_player(
         EditorCamera,
         Camera3d::default(),
         Camera { is_active: false, ..default() },
-        editor_tab_viewer::editor_camera_target(&editor_state),
+        editor::editor_camera_target(&editor_state),
         Projection::from(PerspectiveProjection {
             fov: 70f32.to_radians(),
             ..default()
         }),
-        Transform::from_xyz(1.5, 40.0, 10.0).looking_at(Vec3::new(1.5, 20.0, 1.5), Vec3::Y),
+        Transform::from_xyz(1.5, 60.0, 40.0).looking_at(Vec3::new(1.5, 20.0, 1.5), Vec3::Y),
     ));
 
     // In future we need to ensure to use some configuration to determine the x/y scaling (not relevant here because zero), the scaling, and the offset.
@@ -225,7 +226,7 @@ fn spawn_player(
             player.spawn((
                 PlayerCamera,
                 Camera3d::default(),
-                editor_tab_viewer::game_camera_target(&editor_state),
+                editor::game_camera_target(&editor_state),
                 Projection::from(PerspectiveProjection {
                     fov: 70f32.to_radians(),
                     ..default()
@@ -307,22 +308,37 @@ fn retire_distant_chunks(
     }
 }
 
+/// The game view only receives input while it has captured the cursor.
+fn game_view_captured(
+    editor_state: Res<EditorState>,
+    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+) -> bool {
+    editor_state.is_game_view_active()
+        && editor_state.is_game_view_visible()
+        && cursor.grab_mode != CursorGrabMode::None
+}
+
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
+    editor_state: Res<EditorState>,
+    window: Single<&Window, With<PrimaryWindow>>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
-    mut egui_context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
 ) {
-    // Release the cursor when escape is pressed
-    if keyboard.just_pressed(KeyCode::Escape) {
+    // Release the cursor when escape is pressed, or when the game view is no longer the active tab
+    if keyboard.just_pressed(KeyCode::Escape)
+        || (cursor.grab_mode != CursorGrabMode::None
+            && !(editor_state.is_game_view_active() && editor_state.is_game_view_visible()))
+    {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     }
 
-    // Recapture when a click occurs outside egui
+    // Capture only when clicking inside the game view
     if cursor.grab_mode == CursorGrabMode::None
         && mouse.just_pressed(MouseButton::Left)
-        && !egui_context.get_mut().egui_wants_pointer_input()
+        && editor_state.is_game_view_active()
+        && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -376,16 +392,41 @@ fn player_look(
     camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
 }
 
-fn editor_camera(
+/// Unity-style fly camera: hold the right mouse button over the editor view to look around
+/// and move with WASD, Space/Shift for up/down and the scroll wheel to change speed.
+/// The cursor is never captured.
+fn editor_camera_input(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
+    mouse_wheel: Res<AccumulatedMouseScroll>,
     settings: Res<CameraSettings>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+    editor_state: Res<EditorState>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    mut flying: Local<bool>,
+    mut speed_multiplier: Local<Option<f32>>,
     mut camera: Single<&mut Transform, With<EditorCamera>>,
 ) {
-    // Don't move the camera if the cursor is released
-    if cursor.grab_mode == CursorGrabMode::None {
+    let hovered = editor_state.is_editor_view_active()
+        && window
+            .cursor_position()
+            .is_some_and(|position| editor_state.editor_view_contains(position));
+
+    if mouse.just_pressed(MouseButton::Right) && hovered {
+        *flying = true;
+    }
+
+    if !mouse.pressed(MouseButton::Right) {
+        *flying = false;
+    }
+
+    let speed_multiplier = speed_multiplier.get_or_insert(3.0);
+    if hovered && mouse_wheel.delta.y != 0.0 {
+        *speed_multiplier = (*speed_multiplier * (1.0 + mouse_wheel.delta.y * 0.1)).clamp(0.5, 100.0);
+    }
+
+    if !*flying {
         return;
     }
 
@@ -398,6 +439,7 @@ fn editor_camera(
     }
 
     let mut movement = Vec3::ZERO;
+
     if keyboard.pressed(KeyCode::KeyW) { movement += *camera.forward(); }
     if keyboard.pressed(KeyCode::KeyS) { movement += *camera.back(); }
     if keyboard.pressed(KeyCode::KeyA) { movement += *camera.left(); }
@@ -405,7 +447,7 @@ fn editor_camera(
     if keyboard.pressed(KeyCode::Space) { movement += Vec3::Y; }
     if keyboard.pressed(KeyCode::ShiftLeft) { movement -= Vec3::Y; }
 
-    let speed = settings.move_speed * 3.0;
+    let speed = settings.move_speed * *speed_multiplier;
     camera.translation += movement.normalize_or_zero() * speed * time.delta_secs();
 }
 
@@ -416,8 +458,13 @@ fn player_move(
     settings: Res<CameraSettings>,
     world: Res<VoxelWorld>,
     player: Single<(&mut Transform, &mut Player)>,
+    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
 ) {
     let (mut transform, mut player) = player.into_inner();
+
+    // Ignore keys while the game view hasn't captured the cursor
+    let no_input = ButtonInput::<KeyCode>::default();
+    let keyboard = if cursor.grab_mode == CursorGrabMode::None { &no_input } else { &*keyboard };
 
     let mut movement = Vec3::ZERO;
 
