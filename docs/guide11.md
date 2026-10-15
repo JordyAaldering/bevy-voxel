@@ -1,4 +1,4 @@
-# Performance debugging
+# Performance debugging, editors, and refactoring
 
 At this point, I would like to see some performance statistics.
 What is my framerate? How many chunks are currently loaded? What is my memory usage? etc.
