@@ -6,8 +6,8 @@ use crate::{chunk_mesh::MeshData, face::{Face, FaceDirection}, texture_atlas::Te
 
 use super::VoxelType;
 
-pub const CHUNK_WIDTH: usize = 3;
-pub const CHUNK_HEIGHT: usize = 4;
+pub const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_HEIGHT: usize = 64;
 
 pub struct ChunkData {
     position: ChunkPosition,
