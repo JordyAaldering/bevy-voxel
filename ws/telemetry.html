@@ -1,0 +1,85 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bevy Telemetry</title>
+  <style>
+    body {
+      background: #10141c;
+      color: #e7edf5;
+      font: 16px system-ui, sans-serif;
+      padding: 2rem;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: #1c2431;
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .label { color: #9caec3; }
+    .value { font-size: 2.5rem; font-weight: 700; }
+    #status { color: #9caec3; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Game telemetry</h1>
+  <div id="status">Connecting…</div>
+  <div class="cards">
+    <div class="card">
+      <div class="label">FPS</div>
+      <div class="value" id="fps">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Frame time</div>
+      <div class="value" id="frame">—</div>
+      <div class="label">milliseconds</div>
+    </div>
+    <div class="card">
+      <div class="label">Entities</div>
+      <div class="value" id="entities">—</div>
+    </div>
+  </div>
+
+  <script>
+    const status = document.querySelector("#status");
+
+    function connect() {
+      const ws = new WebSocket(
+        `ws://${location.host}/ws`
+      );
+
+      ws.onopen = () => {
+        status.textContent = "Connected";
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        document.querySelector("#fps").textContent =
+          data.fps?.toFixed(1) ?? "—";
+
+        document.querySelector("#frame").textContent =
+          data.frame_time_ms?.toFixed(2) ?? "—";
+
+        document.querySelector("#entities").textContent =
+          data.entity_count?.toFixed(0) ?? "—";
+      };
+
+      ws.onclose = () => {
+        status.textContent = "Disconnected — reconnecting…";
+        setTimeout(connect, 1000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    connect();
+  </script>
+</body>
+</html>
