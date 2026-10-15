@@ -6,7 +6,9 @@ Instead of evaluating the BCC lattice precisely, it applies a geometric "skewing
 This produces slightly smoother results, but is much faster.
 Once we combine multiple noise layers, and since our world is blocky anyway, this difference should not be visible.
 
-This is one of those cases where you can definitely skip this step and simply use a Perlin noise or Simplex crate, or whatever you would want to use.
+## Simplex Noise
+
+This is one of those cases where you can definitely skip this section and simply use a Perlin noise or Simplex crate, or whatever you would want to use.
 
 I'll go with OpenSimplex2S.
 It seems that it is slightly slower than OpenSimplex2, but produces slightly nicer output.
@@ -49,3 +51,11 @@ Ultimately, they all follow a similar approach, so if we understand Simplex/Perl
 2. The values in the coordinate (x,y,z) are sorted in increasing order, e.g. (y,x,z). Then, ...?
 3. The vertex is hashed to determine the gradient.
 4. The contribution of each vertex of the simplex is combined. The input coordinate is subtracted to unskew the vector. The dot product then gives the gradient value. d^2 gives the squared distance to the point.
+
+## Terrain generation
+
+We can now use this `noise2` function, or whatever 2d noise function you have from your selected crate, to determine the height of each x-y coordinate in the world.
+Thus, for every world position x and y, `noise2(x, y)` gives the `z` height at that position in the world.
+
+We also add another voxel type: stone.
+The topmost voxel, at z, becomes grass, the three below it become dirt, and all others below it become stone.

@@ -7,6 +7,7 @@ pub enum VoxelType {
     Air,
     Grass,
     Dirt,
+    Stone,
 }
 
 impl VoxelType {
@@ -35,6 +36,7 @@ impl VoxelType {
                 }
             },
             Self::Dirt => TextureAtlasPosition::new(1, 0),
+            Self::Stone => TextureAtlasPosition::new(0, 0),
         }
     }
 }
