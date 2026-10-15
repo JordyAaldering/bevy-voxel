@@ -10,7 +10,7 @@ mod world;
 
 use std::time::Duration;
 
-use bevy::{camera::visibility::RenderLayers, diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll}, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::{camera::visibility::RenderLayers, camera_controller::pan_orbit_camera::{DefaultPanOrbitCameraPlugins, SyncCameraPosition, controller::component::PanOrbitCamera}, diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit}, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
 use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, prelude::*};
 
 use crate::{chunk::*, editor::EditorState, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
@@ -108,6 +108,10 @@ fn main() {
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
         ))
+        .add_plugins((
+            MeshPickingPlugin,
+            DefaultPanOrbitCameraPlugins,
+        ))
         .add_plugins(EguiPlugin::default())
         .add_plugins(DefaultInspectorConfigPlugin)
         .init_resource::<GameMode>()
@@ -132,7 +136,9 @@ fn main() {
                 .run_if(game_view_captured),
             // Keeps running while uncaptured, so gravity still applies
             player_move.run_if(editor::is_game_view_visible),
-            editor_camera_input.run_if(editor::is_editor_view_visible),
+            editor_camera_input
+                .run_if(editor::is_editor_view_visible)
+                .before(SyncCameraPosition),
         ))
         .add_systems(Update, (
             draw_selected_voxel,
@@ -203,6 +209,7 @@ fn spawn_player(
         EditorCamera,
         Camera3d::default(),
         Camera { is_active: false, ..default() },
+        PanOrbitCamera::default(),
         editor::editor_camera_target(&editor_state),
         Projection::from(PerspectiveProjection {
             fov: 70f32.to_radians(),
@@ -392,63 +399,52 @@ fn player_look(
     camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
 }
 
-/// Unity-style fly camera: hold the right mouse button over the editor view to look around
-/// and move with WASD, Space/Shift for up/down and the scroll wheel to change speed.
-/// The cursor is never captured.
+/// Right mouse button orbits, middle mouse button pans and the scroll wheel zooms, all
+/// relative to the editor view. The cursor is never captured.
 fn editor_camera_input(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
-    mouse_wheel: Res<AccumulatedMouseScroll>,
-    settings: Res<CameraSettings>,
+    mouse_scroll: Res<AccumulatedMouseScroll>,
     editor_state: Res<EditorState>,
     window: Single<&Window, With<PrimaryWindow>>,
-    mut flying: Local<bool>,
-    mut speed_multiplier: Local<Option<f32>>,
-    mut camera: Single<&mut Transform, With<EditorCamera>>,
+    mut camera: Single<&mut PanOrbitCamera, With<EditorCamera>>,
 ) {
     let hovered = editor_state.is_editor_view_active()
         && window
             .cursor_position()
             .is_some_and(|position| editor_state.editor_view_contains(position));
 
-    if mouse.just_pressed(MouseButton::Right) && hovered {
-        *flying = true;
+    let zoom = if hovered {
+        match mouse_scroll.unit {
+            MouseScrollUnit::Line => mouse_scroll.delta.y * 150.0,
+            MouseScrollUnit::Pixel => mouse_scroll.delta.y,
+        }
+    } else {
+        0.0
+    };
+
+    let zoom_finished = camera.current_motion.is_zooming_only()
+        && camera
+            .current_motion
+            .inputs()
+            .is_some_and(|inputs| inputs.zoom_velocity_abs(camera.smoothing.zoom.mul_f32(2.0)) <= 0.0);
+    if zoom_finished || mouse.any_just_released([MouseButton::Right, MouseButton::Middle]) {
+        camera.end_move();
     }
 
-    if !mouse.pressed(MouseButton::Right) {
-        *flying = false;
+    if hovered {
+        if mouse.just_pressed(MouseButton::Right) {
+            camera.start_orbit(None);
+        } else if mouse.just_pressed(MouseButton::Middle) {
+            camera.start_pan(None);
+        } else if zoom != 0.0 && !camera.current_motion.is_user_controlled() {
+            camera.start_zoom(None);
+        }
     }
 
-    let speed_multiplier = speed_multiplier.get_or_insert(3.0);
-    if hovered && mouse_wheel.delta.y != 0.0 {
-        *speed_multiplier = (*speed_multiplier * (1.0 + mouse_wheel.delta.y * 0.1)).clamp(0.5, 100.0);
-    }
-
-    if !*flying {
-        return;
-    }
-
-    let delta = mouse_motion.delta;
-    if delta != Vec2::ZERO {
-        let (mut yaw, mut pitch, _) = camera.rotation.to_euler(EulerRot::YXZ);
-        yaw -= delta.x * settings.mouse_sensitivity;
-        pitch = (pitch - delta.y * settings.mouse_sensitivity).clamp(-MAX_PITCH, MAX_PITCH);
-        camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
-    }
-
-    let mut movement = Vec3::ZERO;
-
-    if keyboard.pressed(KeyCode::KeyW) { movement += *camera.forward(); }
-    if keyboard.pressed(KeyCode::KeyS) { movement += *camera.back(); }
-    if keyboard.pressed(KeyCode::KeyA) { movement += *camera.left(); }
-    if keyboard.pressed(KeyCode::KeyD) { movement += *camera.right(); }
-    if keyboard.pressed(KeyCode::Space) { movement += Vec3::Y; }
-    if keyboard.pressed(KeyCode::ShiftLeft) { movement -= Vec3::Y; }
-
-    let speed = settings.move_speed * *speed_multiplier;
-    camera.translation += movement.normalize_or_zero() * speed * time.delta_secs();
+    let dragging = mouse.any_pressed([MouseButton::Right, MouseButton::Middle]);
+    camera.send_screenspace_input(if dragging { mouse_motion.delta } else { Vec2::ZERO });
+    camera.send_zoom_input(zoom);
 }
 
 fn player_move(

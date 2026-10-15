@@ -15,7 +15,7 @@ opt-level = 3
 
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
-bevy = { version = "0.20.0", features = ["dynamic_linking"] }
+bevy = { version = "0.20.0", features = ["dynamic_linking", "pan_orbit_camera"] }
 bevy-inspector-egui = { git = "https://github.com/taboky-dev/bevy-inspector-egui.git", rev = "9a5b086" }
 egui_dock = "0.21.1"
 log = { version = "0.4.34", features = ["max_level_debug", "release_max_level_warn"] }
