@@ -228,6 +228,7 @@ fn spawn_player(
                 grounded: false,
             },
             Transform::from_xyz(1.5, world_height as f32 + 1.0, 1.5),
+            InheritedVisibility::default(),
         ))
         .with_children(|player| {
             player.spawn((
