@@ -129,8 +129,11 @@ fn spawn_player(mut commands: Commands) {
             player.spawn((
                 PlayerCamera,
                 Camera3d::default(),
-                Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0)
-                    //.with_rotation(rotation),
+                Projection::from(PerspectiveProjection {
+                    fov: 70f32.to_radians(),
+                    ..default()
+                }),
+                Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
             ));
         });
 }
