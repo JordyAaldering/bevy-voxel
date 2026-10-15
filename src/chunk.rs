@@ -161,6 +161,7 @@ impl ChunkData {
         }
     }
 
+    #[allow(unused)]
     pub fn iter(&self) -> impl Iterator<Item = (VoxelPosition, VoxelType)> {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {

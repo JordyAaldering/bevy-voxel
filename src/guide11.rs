@@ -11,8 +11,7 @@ mod world;
 use std::time::Duration;
 
 use bevy::{diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiContext, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, bevy_inspector, egui, prelude::*, quick::WorldInspectorPlugin};
-use egui_dock::{DockArea, DockState, NodeIndex, Style};
+use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiContext, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, prelude::*};
 
 use crate::{chunk::*, editor_tab_viewer::EditorState, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
 
@@ -116,8 +115,8 @@ fn main() {
         .register_type::<CameraSettings>()
         .register_type::<DebugGizmos>()
         .insert_resource(TelemetryPublisher(sender))
-        .add_plugins(WorldInspectorPlugin::new())
         .add_systems(EguiPrimaryContextPass, editor_tab_viewer::show_editor)
+        .add_systems(PostUpdate, editor_tab_viewer::set_camera_viewport.after(editor_tab_viewer::show_editor))
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_player,
@@ -145,30 +144,26 @@ fn main() {
         .run();
 }
 
-fn debug_settings_ui(world: &mut World) {
-    let Ok(egui_context) = world
-        .query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
-        .single(world)
-    else {
-        return;
-    };
-
-    let mut ctx = egui_context.clone();
-
-    egui::Window::new("Settings").show(ctx.get_mut(), |ui| {
-        ui.heading("Camera Settings");
-        ui.push_id("camera_settings", |ui| {
-            bevy_inspector::ui_for_resource::<CameraSettings>(world, ui);
-        });
-
-        ui.separator();
-
-        ui.heading("Debug Gizmos");
-        ui.push_id("debug_gizmos", |ui| {
-            bevy_inspector::ui_for_resource::<DebugGizmos>(world, ui);
-        });
-    });
-}
+// fn debug_settings_ui(world: &mut World) {
+//     let Ok(egui_context) = world
+//         .query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
+//         .single(world)
+//     else {
+//         return;
+//     };
+//     let mut ctx = egui_context.clone();
+//     egui::Window::new("Settings").show(ctx.get_mut(), |ui| {
+//         ui.heading("Camera Settings");
+//         ui.push_id("camera_settings", |ui| {
+//             bevy_inspector::ui_for_resource::<CameraSettings>(world, ui);
+//         });
+//         ui.separator();
+//         ui.heading("Debug Gizmos");
+//         ui.push_id("debug_gizmos", |ui| {
+//             bevy_inspector::ui_for_resource::<DebugGizmos>(world, ui);
+//         });
+//     });
+// }
 
 fn spawn_global_illumination(mut commands: Commands) {
     commands.spawn((
