@@ -10,8 +10,8 @@ mod world;
 
 use std::time::Duration;
 
-use bevy::{diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiContext, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, prelude::*};
+use bevy::{camera::visibility::RenderLayers, diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiContext, EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, prelude::*};
 
 use crate::{chunk::*, editor_tab_viewer::EditorState, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
 
@@ -180,7 +180,16 @@ fn spawn_global_illumination(mut commands: Commands) {
     ));
 }
 
-fn spawn_player(mut commands: Commands) {
+fn spawn_player(mut commands: Commands, mut egui_settings: ResMut<EguiGlobalSettings>) {
+    // Give egui its own camera, so the game camera can be restricted to the editor's game view
+    egui_settings.auto_create_primary_context = false;
+    commands.spawn((
+        PrimaryEguiContext,
+        Camera2d,
+        RenderLayers::none(),
+        Camera { order: 1, ..default() },
+    ));
+
     // In future we need to ensure to use some configuration to determine the x/y scaling (not relevant here because zero), the scaling, and the offset.
     let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
     commands
