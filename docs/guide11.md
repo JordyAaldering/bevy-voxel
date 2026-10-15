@@ -95,3 +95,22 @@ That allows us to inspect the world from different angles and to check if chunks
 
 Bevy 0.20 added a new Pan Orbit Camera: https://bevy.org/news/bevy-0-20/#pan-orbit-camera.
 That is perfect for the editor camera.
+
+## Take some time to refactor
+
+Ideally you've been refactoring your code along the way, but if not, now is a good time to do so.
+Take 30 minutes to an hour to refactor your code.
+
+Split logic into files, ensure a good separation of concerns, and make sure your code is readable and maintainable.
+Take a close look over all the systems and resources, and see if you can improve the design.
+Are resources running in the right order, or are dependencies missing?
+
+Now would also be a good time to add proper error messages.
+Similar to the popular anyhow crate, `BevyError` now provides an ergonomic way to attach extra context to an error using the context method, which also allows creating a `Result<T, BevyError>` from an `Option<T>`.
+This makes it easier to trace back errors with human-readable messages without looking at verbose backtraces.
+https://bevy.org/news/bevy-0-20/#bevy-error-context-messages
+
+At this point, you should understand all the code you have written.
+If not, go back through these guides and remember how everything works, and this time add some documentation to remember in the future.
+If you plan on making a real game, now might also be a good time to add some additional voxels and simple features, or to improve the terrain generation.
+You'll be looking at this for a long time; and it's always more fun if it actually looks nice.
