@@ -41,3 +41,56 @@ We can gate the debug dashboard, and the necessary dependencies, behind a featur
 https://doc.rust-lang.org/cargo/reference/features.html
 
 I omit it for now, because I want to avoid recompilations when enabling/disabling certain flags.
+
+## Toggle-able gizmos
+
+I'll use the `bevy-inspector-egui` again to add a toggle for showing gizmos, just like we did for the camera settings.
+To avoid a blowup of the number of egui windows, I'll group all debug settings into a single window: `DebugSettingsView`.
+
+This is a bit of a pain, because I still want CameraSettings and DebugGizmos to be separate resources: the player_look function should not have access to DebugGizmos; that's just poor design.
+However, I also don't want to have two (or more) separate egui windows for the debug settings, because that would be a mess.
+We could manually create a window, but that would also mean manually implementing the sliders etc.
+Luckily, we can let the window of each resource be automatically drawn.
+Then, we can use a similar approach as we did for the chunks window.
+
+```rust
+fn debug_settings_ui(world: &mut World) {
+    let Ok(egui_context) = world
+        .query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
+        .single(world)
+    else {
+        return;
+    };
+
+    let mut ctx = egui_context.clone();
+
+    egui::Window::new("Settings").show(ctx.get_mut(), |ui| {
+        ui.heading("Camera Settings");
+        ui.push_id("camera_settings", |ui| {
+            bevy_inspector::ui_for_resource::<CameraSettings>(world, ui);
+        });
+
+        ui.separator();
+
+        ui.heading("Debug Gizmos");
+        ui.push_id("debug_gizmos", |ui| {
+            bevy_inspector::ui_for_resource::<DebugGizmos>(world, ui);
+        });
+    });
+}
+```
+
+## A real editor
+
+Whilst looking through the documentation: https://github.com/jakobhellermann/bevy-inspector-egui/blob/main/README.md, I found out about `egui_dock`.
+It gives your game a real editor, just like you would find in Unity, for example.
+Feel free to skip this step, but I think it is worth a look.
+
+![](https://raw.githubusercontent.com/jakobhellermann/bevy-inspector-egui/main/docs/images/egui_dock.png)
+
+The `bevy-inspector-egui` plugin already has an example for using `egui_dock`: https://github.com/jakobhellermann/bevy-inspector-egui/blob/main/crates/bevy-inspector-egui/examples/integrations/egui_dock.rs.
+
+egui_dock has two central concepts:
+- DockState: stores the layout, splits, and tabs.
+- TabViewer: determines what each tab displays.
+We'll use an enum for the tabs so adding new inspector panels stays straightforward.
