@@ -27,6 +27,12 @@ cargo add serde_json
 - `tokio` is an async runtime for Rust, which we need to run the web server outside the Bevy game loop. Otherwise, the web server would block the game loop.
 - `serde` and `serde_json` are used to serialize the metrics data to JSON, which can be easily consumed by the browser dashboard.
 
+You can really take this quite far, and implement a full-featured dashboard with multiple pages, graphs, etc.
+I'm no web developer, so I'll keep it simple, but feel free to add more features to the dashboard at this point!
+
+You could even go a step further and make the game configurable from the dashboard, for example for showing gizmos.
+However, I prefer to keep the dashboard read-only, and instead use the Bevy `bevy-inspector-egui` plugin for that.
+
 ## Feature gate
 
 If you ever share your game, you probably don't want to ship the debug dashboard with it.
