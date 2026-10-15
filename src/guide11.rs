@@ -117,7 +117,7 @@ fn main() {
             toggle_gamemode,
             player_look,
             player_move,
-            break_block,
+            break_place_block,
         ))
         .add_systems(Update, (
             draw_selected_voxel,
@@ -594,13 +594,15 @@ fn draw_selected_voxel(
     gizmos.line(vertices[2], vertices[0], Color::WHITE);
 }
 
-fn break_block(
+fn break_place_block(
     mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
     mut world: ResMut<VoxelWorld>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
-    if !mouse.just_pressed(MouseButton::Left) {
+    let do_break = mouse.just_pressed(MouseButton::Left);
+    let do_place = mouse.just_pressed(MouseButton::Right);
+    if !(do_break || do_place) {
         return;
     }
 
@@ -609,7 +611,12 @@ fn break_block(
 
     if let Some(VoxelHit { position, face }) = find_voxel(&world, origin, *direction) {
         info!("Hit {:?} at {:?} face", position, face);
-        world.set_voxel(&mut commands, position, VoxelType::Air);
+        if do_break {
+            world.set_voxel(&mut commands, position, VoxelType::Air);
+        } else /* if do_place */ {
+            let neighbor = position.neighbor(face);
+            world.set_voxel(&mut commands, neighbor, VoxelType::Stone);
+        }
     }
 }
 

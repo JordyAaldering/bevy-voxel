@@ -89,6 +89,7 @@ impl VoxelWorld {
         let chunk_pos = world_to_chunk_position(pos);
         let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
         chunk[voxel_pos] = voxel;
+
         if let Some(entity) = chunk.entity() {
             commands.entity(entity).insert(NeedsRemesh);
         }

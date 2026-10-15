@@ -82,4 +82,15 @@ impl WorldPosition {
     pub fn origin(&self) -> Vec3 {
         vec3(self.x as f32, self.y as f32, self.z as f32)
     }
+
+    pub fn neighbor(&self, face: FaceDirection) -> Self {
+        match face {
+            FaceDirection::Left   => Self::new(self.x - 1, self.y, self.z),
+            FaceDirection::Right  => Self::new(self.x + 1, self.y, self.z),
+            FaceDirection::Top    => Self::new(self.x, self.y + 1, self.z),
+            FaceDirection::Bottom => Self::new(self.x, self.y - 1, self.z),
+            FaceDirection::Front  => Self::new(self.x, self.y, self.z + 1),
+            FaceDirection::Back   => Self::new(self.x, self.y, self.z - 1),
+        }
+    }
 }

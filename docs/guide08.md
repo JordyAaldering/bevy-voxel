@@ -7,8 +7,12 @@ But again, because we are in our simple voxel world we can actually do this enti
 We use the 'DDA' algorithm.
 https://en.wikipedia.org/wiki/Digital_differential_analyzer_(graphics_algorithm)
 
+We can use this information to determine which block we are looking at, and should break.
+
 For debugging purposes we also add an outline to the face we are looking at.
 Gizmos are perfect for this.
+
+The DDA algorithm also tells us which face of the block we are looking at, so we can also use this same information to determine where to place a block.
 
 ## Refactoring
 
