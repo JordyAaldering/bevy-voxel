@@ -18,3 +18,16 @@ I am no Bevy or game design professional, so I am sure that I do things in a sub
 Anyway, everyone has their own development style.
 If something is unclear, please let me know in a GitHub issue.
 If you find out I've done something in a suboptimal way, (which can be rectified without making the guide more complex), please share.
+
+Bevy states:
+
+> Bevy is still in development. Important features are missing, and documentation can be sparse. A new version of Bevy containing breaking changes to the API is released approximately once every 3 months. We provide migration guides, but we can't guarantee that migrations will always be easy. Use only if you are willing to work in this environment.
+
+And the same holds here: only use this guide if you are willing to put in the work.
+I only provide code snippets, code might be out of date, and I'm sure I've done things in a suboptimal way.
+It is up to you to decide where to put in extra work to improve your understanding, or the code.
+
+The Bevy introduction is quite nice: https://bevy.org/news/introducing-bevy.
+It is a little outdated, but brings the core ideas across.
+Definitely read the initial parts about ECS, and just scroll through the rest to get an idea of what is available.
+In particular, it is crucial that you understand the Entity Component System (ECS) paradigm.
