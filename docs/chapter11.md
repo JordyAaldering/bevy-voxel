@@ -118,6 +118,6 @@ This makes it easier to trace back errors with human-readable messages without l
 https://bevy.org/news/bevy-0-20/#bevy-error-context-messages
 
 At this point, you should understand all the code you have written.
-If not, go back through these guides and remember how everything works, and this time add some documentation to remember in the future.
+If not, go back through the chapters and remember how everything works, and this time add some documentation to remember in the future.
 If you plan on making a real game, now might also be a good time to add some additional voxels and simple features, or to improve the terrain generation.
 You'll be looking at this for a long time; and it's always more fun if it actually looks nice.
