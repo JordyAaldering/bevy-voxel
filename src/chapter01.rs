@@ -1,4 +1,8 @@
-use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
+use bevy::prelude::*;
+use bevy::{
+    input::mouse::AccumulatedMouseMotion,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+};
 
 const MOVE_SPEED: f32 = 1.0;
 const MOUSE_SENSITIVITY: f32 = 0.001;

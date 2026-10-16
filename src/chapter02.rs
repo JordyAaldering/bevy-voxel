@@ -1,6 +1,11 @@
-use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
+use bevy::prelude::*;
+use bevy::{
+    input::mouse::AccumulatedMouseMotion,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+};
+use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::bevy_egui::prelude::*;
+use bevy_inspector_egui::quick::{ResourceInspectorPlugin, WorldInspectorPlugin};
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -20,7 +25,7 @@ impl Default for CameraSettings {
     }
 }
 
-fn main() {
+fn main() -> AppExit {
     App::new()
         .add_plugins((
             DefaultPlugins,
@@ -39,7 +44,7 @@ fn main() {
             toggle_cursor,
             (player_look, player_move).run_if(is_focused),
         ))
-        .run();
+        .run()
 }
 
 fn spawn_global_illumination(mut commands: Commands) {

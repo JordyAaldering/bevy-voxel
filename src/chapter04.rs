@@ -34,7 +34,7 @@ struct MeshData {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VoxelType {
+enum VoxelType {
     Air,
     Grass,
 }
