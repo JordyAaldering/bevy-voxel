@@ -1,5 +1,6 @@
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
+use bevy_inspector_egui::{prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
+use bevy_inspector_egui::bevy_egui::prelude::*;
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -21,19 +22,14 @@ impl Default for CameraSettings {
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_cursor_options: Some(CursorOptions {
-                grab_mode: CursorGrabMode::Locked,
-                visible: false,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins((
+            DefaultPlugins,
+            EguiPlugin::default(),
+            WorldInspectorPlugin::new(),
+            ResourceInspectorPlugin::<CameraSettings>::default(),
+        ))
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
-        .add_plugins(EguiPlugin::default())
-        .add_plugins(WorldInspectorPlugin::new())
-        .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_camera,
@@ -41,7 +37,7 @@ fn main() {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            move_camera,
+            (player_look, player_move).run_if(is_focused),
         ))
         .run();
 }
@@ -80,6 +76,10 @@ fn spawn_voxel(
     ));
 }
 
+fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
+    cursor.grab_mode == CursorGrabMode::Locked
+}
+
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -102,51 +102,47 @@ fn toggle_cursor(
     }
 }
 
-fn move_camera(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
+fn player_look(
     settings: Res<CameraSettings>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+    mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
-    // Don't move the camera if app is unfocused
-    if cursor.grab_mode == CursorGrabMode::None {
-        return;
-    }
-
-    // Look
-    let delta = mouse_motion.delta;
+    let delta = mouse.delta;
 
     if delta != Vec2::ZERO {
         camera.rotate_y(-delta.x * settings.mouse_sensitivity);
-
         camera.rotate_local_x(-delta.y * settings.mouse_sensitivity);
     }
+}
 
-    // Move
-    let mut movement = Vec3::ZERO;
+fn player_move(
+    time: Res<Time>,
+    settings: Res<CameraSettings>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut camera: Single<&mut Transform, With<Camera3d>>,
+) {
+    let mut delta = Vec3::ZERO;
 
     if keyboard.pressed(KeyCode::KeyW) {
-        movement += *camera.forward();
+        delta += *camera.forward();
     }
     if keyboard.pressed(KeyCode::KeyS) {
-        movement += *camera.back();
+        delta += *camera.back();
     }
     if keyboard.pressed(KeyCode::KeyA) {
-        movement += *camera.left();
+        delta += *camera.left();
     }
     if keyboard.pressed(KeyCode::KeyD) {
-        movement += *camera.right();
+        delta += *camera.right();
     }
     if keyboard.pressed(KeyCode::Space) {
-        movement += Vec3::Y;
+        delta += Vec3::Y;
     }
     if keyboard.pressed(KeyCode::ShiftLeft) {
-        movement -= Vec3::Y;
+        delta -= Vec3::Y;
     }
 
-    if movement != Vec3::ZERO {
-        camera.translation += settings.move_speed * time.delta_secs() * movement.normalize();
+    if delta != Vec3::ZERO {
+        camera.translation += settings.move_speed * time.delta_secs() * delta.normalize();
     }
 }
