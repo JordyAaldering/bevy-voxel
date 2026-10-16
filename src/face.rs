@@ -1,4 +1,4 @@
-use bevy::{image::TextureAtlasBuilder, math::{Vec2, Vec3, vec2, vec3}};
+use bevy::math::{Vec2, Vec3, vec2, vec3};
 
 pub struct Face {
     origin: Vec3,

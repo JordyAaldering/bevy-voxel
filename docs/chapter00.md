@@ -1,33 +1,43 @@
 # Foreword
 
-These are deliberately named 'chapters', and not 'tutorials', as the purpose is to teach you how to do this yourself, rather than simply giving a copy-pastable solution.
-To this end, I deliberately only show code snippets, rather than the entire code.
-The purpose is for you to learn how to do this yourself.
-By simply copy-pasting the code you don't learn how to fix bugs or problems in the code, how to adjust it to your liking, and ultimately how to continue after the chapter ends.
-For that same reason I will often use external resources to explain certain concepts: if you want to actually understand what is going on it is crucial to look for explanations rather than blindly copying.
+I like figuring out how things work under the hood.
+When developing something, I often run into things that I think can maybe be done differently, or wonder how a particular system works.
+There is a lot of satisfaction in truly understanding how something works, and being able to implement it yourself.
 
-If you just want a Voxel engine, use something like [bevy-voxel-world](https://crates.io/crates/bevy_voxel_world) rather than copying code from here.
+This guide follows the same approach.
+The goal is not simply to make a voxel game, but to understand the concepts behind it and learn how to figure things out yourself.
+If you just want a voxel engine, use something like [bevy-voxel-world](https://crates.io/crates/bevy_voxel_world) instead.
 
-In particular, I want you to really try to understand what I write here.
-Especially in a world with tons of AI-generated content, people are more and more conditioned to just blindly read a text, 'one ear in and one ear out' (or I guess eye in this case), and not really think about it.
-(Deliberately put a sentence here that makes no sense).
+These are deliberately named *chapters*, and not *tutorials*.
+I want to teach you how to do things yourself, rather than give you a copy-pasteable solution.
+That's why I only show code snippets instead of the entire code.
+Copy-pasting code doesn't teach you how to fix bugs, adapt things to your needs, or continue after the chapter ends.
+For the same reason, I often refer to external resources.
+If you want to understand what's going on, you need to do more than just copy code.
 
-If the previous sentence did not bother you, you failed the first test.
+In particular, I want you to actually think about what you read.
+People often blindly consume information without thinking for a second about whether it _actually_ makes sense.
+This is especially important now that AI-generated content is so common, which will blatantly lie to you and try to get away with it.
+Ideally, you truly attempt to understand the concepts in these chapters (that is; the ones you find interesting, I'll try to develop these chapters in such a way that you can skip the tangents).
+
 I encourage you to do your own research.
-I am no Bevy or game design professional, so I am sure that I do things in a suboptimal way.
-Anyway, everyone has their own development style.
+I'm no Bevy or game design professional, so I'm sure I do things in suboptimal ways.
+Everyone has their own development style, and there is often more than one way to solve a problem.
 If something is unclear, please let me know in a GitHub issue.
-If you find out I've done something in a suboptimal way, (which can be rectified without making the guide more complex), please share.
+If you find a better solution that doesn't make the guide more complex, please share it.
 
-Bevy states:
+Bevy itself comes with a warning:
 
 > Bevy is still in development. Important features are missing, and documentation can be sparse. A new version of Bevy containing breaking changes to the API is released approximately once every 3 months. We provide migration guides, but we can't guarantee that migrations will always be easy. Use only if you are willing to work in this environment.
 
-And the same holds here: only use this guide if you are willing to put in the work.
-I only provide code snippets, code might be out of date, and I'm sure I've done things in a suboptimal way.
-It is up to you to decide where to put in extra work to improve your understanding, or the code.
+The same applies here.
+The code might be out of date, and some solutions might not be optimal or the 'Bevy way' of doing things.
+Use this guide as a starting point, and decide for yourself where to dig deeper.
 
-The Bevy introduction is quite nice: https://bevy.org/news/introducing-bevy.
-It is a little outdated, but brings the core ideas across.
-Definitely read the initial parts about ECS, and just scroll through the rest to get an idea of what is available.
-In particular, it is crucial that you understand the Entity Component System (ECS) paradigm.
+Before starting, I recommend reading the [Bevy introduction](https://bevy.org/news/introducing-bevy).
+It's a little outdated, but explains the core ideas well.
+Pay particular attention to the Entity Component System (ECS) paradigm, as understanding it is crucial for working with Bevy.
+You don't need to know everything up front; just get a feel for what's available.
+
+With that out of the way, let's get started.
+We'll build up the concepts behind a voxel game step by step, with the aim of understanding not just how things work, but how to figure them out yourself.
