@@ -19,6 +19,7 @@ In particular, I want you to actually think about what you read.
 People often blindly consume information without thinking for a second about whether it _actually_ makes sense.
 This is especially important now that AI-generated content is so common, which will blatantly lie to you and try to get away with it.
 Ideally, you truly attempt to understand the concepts in these chapters (that is; the ones you find interesting, I'll try to develop these chapters in such a way that you can skip the tangents).
+When I add an `exercise`, the purpose is to make you pause for a few minutes and to really think about whether you understand.
 
 I encourage you to do your own research.
 I'm no Bevy or game design professional, so I'm sure I do things in suboptimal ways.
