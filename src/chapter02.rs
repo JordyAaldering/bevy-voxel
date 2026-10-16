@@ -58,6 +58,7 @@ fn spawn_global_illumination(mut commands: Commands) {
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
+        Name::new("Player"),
         Camera3d::default(),
         Transform::from_xyz(1.5, 2.0, 4.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),

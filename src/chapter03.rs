@@ -1,9 +1,6 @@
-mod face;
-
 use bevy::{asset::RenderAssetUsages, input::mouse::AccumulatedMouseMotion, mesh::{Indices, PrimitiveTopology}, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiPlugin, PrimaryEguiContext}, prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
-
-use crate::face::*;
+use bevy_inspector_egui::{prelude::*, quick::{ResourceInspectorPlugin, WorldInspectorPlugin}};
+use bevy_inspector_egui::bevy_egui::prelude::*;
 
 #[derive(Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -23,41 +20,171 @@ impl Default for CameraSettings {
     }
 }
 
-
-/// Chunk-local voxel position, with x and z in [0, CHUNK_WIDTH) and y in [0, CHUNK_HEIGHT).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Voxel {
-    pub x: usize,
-    pub y: usize,
-    pub z: usize,
+struct Voxel {
+    x: usize,
+    y: usize,
+    z: usize,
 }
 
 impl Voxel {
-    pub fn new(x: usize, y: usize, z: usize) -> Self {
+    fn new(x: usize, y: usize, z: usize) -> Self {
         Self { x, y, z }
     }
 
-    pub fn origin(&self) -> Vec3 {
+    fn origin(&self) -> Vec3 {
         vec3(self.x as f32, self.y as f32, self.z as f32)
     }
 }
 
+struct Face {
+    origin: Vec3,
+    direction: Direction,
+}
+
+impl Face {
+    fn new(origin: Vec3, direction: Direction) -> Self {
+        Self { origin, direction }
+    }
+
+    /// Returns the four vertices of the quad.
+    ///
+    /// The quad is defined by the origin and direction of the face:
+    /// ```text
+    ///     (0,1,0)-------------------(1,1,0)
+    ///          /|                  /|
+    ///         / |                 / |
+    ///        /  |                /  |
+    /// (0,1,1)-------------(1,1,1)   |
+    ///       |   |               |   |
+    ///       |   |               |   |
+    ///       |   |               |   |
+    ///       |  (0,0,0)----------|--(1,0,0)
+    ///       | /                 | /
+    ///       |/                  |/
+    /// (0,0,1)-------------------(1,0,1)
+    /// ```
+    ///
+    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
+    fn vertices(&self) -> [Vec3; 4] {
+        let o = self.origin;
+
+        match self.direction {
+            Direction::Right => [
+                o + Vec3::X + Vec3::Z,
+                o + Vec3::X,
+                o + Vec3::X + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y,
+            ],
+            Direction::Left => [
+                o,
+                o + Vec3::Z,
+                o + Vec3::Y,
+                o + Vec3::Y + Vec3::Z,
+            ],
+            Direction::Top => [
+                o + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y + Vec3::Z,
+                o + Vec3::Y,
+                o + Vec3::X + Vec3::Y,
+            ],
+            Direction::Bottom => [
+                o,
+                o + Vec3::X,
+                o + Vec3::Z,
+                o + Vec3::X + Vec3::Z,
+            ],
+            Direction::Front => [
+                o + Vec3::Z,
+                o + Vec3::X + Vec3::Z,
+                o + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y + Vec3::Z,
+            ],
+            Direction::Back => [
+                o + Vec3::X,
+                o,
+                o + Vec3::X + Vec3::Y,
+                o + Vec3::Y,
+            ],
+        }
+    }
+
+    /// Returns the vertex indices for the quad (two triangles).
+    ///
+    /// Vertices are ordered as viewed from outside the voxel:
+    /// ```text
+    /// 2----3
+    /// | \  |
+    /// |  \ |
+    /// 0----1
+    /// ```
+    fn indices(&self, start: u32) -> [u32; 6] {
+        [
+            // First triangle
+            start + 0, // Bottom left
+            start + 1, // Bottom right
+            start + 2, // Top left
+            // Second triangle
+            start + 2, // Top left
+            start + 1, // Bottom right
+            start + 3, // Top right
+        ]
+    }
+
+    /// Returns the normals of the 4 corners of the quad.
+    fn normals(&self) -> [Vec3; 4] {
+        [self.direction.normal(); 4]
+    }
+
+    /// Returns the UV coordinates of the 4 corners of the quad.
+    fn uvs(&self) -> [Vec2; 4] {
+        [
+            vec2(0.0, 0.0), // Bottom left
+            vec2(1.0, 0.0), // Bottom right
+            vec2(0.0, 1.0), // Top left
+            vec2(1.0, 1.0), // Top right
+        ]
+    }
+}
+
+enum Direction {
+    /// Increasing x
+    Right,
+    /// Decreasing x
+    Left,
+    /// Increasing y
+    Top,
+    /// Decreasing y
+    Bottom,
+    /// Increasing z
+    Front,
+    /// Decreasing z
+    Back,
+}
+
+impl Direction {
+    /// Returns an outward-facing normal vector for the face direction.
+    fn normal(&self) -> Vec3 {
+        match self {
+            Self::Right  => vec3( 1.0, 0.0, 0.0),
+            Self::Left   => vec3(-1.0, 0.0, 0.0),
+            Self::Top    => vec3(0.0,  1.0, 0.0),
+            Self::Bottom => vec3(0.0, -1.0, 0.0),
+            Self::Front  => vec3(0.0, 0.0,  1.0),
+            Self::Back   => vec3(0.0, 0.0, -1.0),
+        }
+    }
+}
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_cursor_options: Some(CursorOptions {
-                grab_mode: CursorGrabMode::Locked,
-                visible: false,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins((
+            DefaultPlugins,
+            EguiPlugin::default(),
+            WorldInspectorPlugin::new(),
+            ResourceInspectorPlugin::<CameraSettings>::default(),
+        ))
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
-        .add_plugins(EguiPlugin::default())
-        .add_plugins(WorldInspectorPlugin::new())
-        .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_camera,
@@ -65,7 +192,7 @@ fn main() {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            move_camera,
+            (player_look, player_move).run_if(is_focused),
         ))
         .run();
 }
@@ -86,6 +213,7 @@ fn spawn_global_illumination(mut commands: Commands) {
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
+        Name::new("Player"),
         Camera3d::default(),
         Transform::from_xyz(1.5, 2.0, 4.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
@@ -107,17 +235,17 @@ fn spawn_voxel(
 
 fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
     let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
-    let mut indices = Vec::with_capacity(6 * 6); // 6 indices per face (2 triangles)
-    let mut normals = Vec::with_capacity(6 * 4); // 4 normals per face
-    let mut uvs = Vec::with_capacity(6 * 4); // 4 uvs per face
+    let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
+    let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
+    let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
 
     for face in [
-        FaceDirection::Right,
-        FaceDirection::Left,
-        FaceDirection::Top,
-        FaceDirection::Bottom,
-        FaceDirection::Front,
-        FaceDirection::Back,
+        Direction::Right,
+        Direction::Left,
+        Direction::Top,
+        Direction::Bottom,
+        Direction::Front,
+        Direction::Back,
     ] {
         let face = Face::new(voxel.origin(), face);
 
@@ -133,6 +261,10 @@ fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_indices(Indices::U32(indices))
+}
+
+fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
+    cursor.grab_mode == CursorGrabMode::Locked
 }
 
 fn toggle_cursor(
@@ -157,51 +289,47 @@ fn toggle_cursor(
     }
 }
 
-fn move_camera(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
+fn player_look(
     settings: Res<CameraSettings>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+    mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
-    // Don't move the camera if app is unfocused
-    if cursor.grab_mode == CursorGrabMode::None {
-        return;
-    }
-
-    // Look
-    let delta = mouse_motion.delta;
+    let delta = mouse.delta;
 
     if delta != Vec2::ZERO {
         camera.rotate_y(-delta.x * settings.mouse_sensitivity);
-
         camera.rotate_local_x(-delta.y * settings.mouse_sensitivity);
     }
+}
 
-    // Move
-    let mut movement = Vec3::ZERO;
+fn player_move(
+    time: Res<Time>,
+    settings: Res<CameraSettings>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut camera: Single<&mut Transform, With<Camera3d>>,
+) {
+    let mut delta = Vec3::ZERO;
 
     if keyboard.pressed(KeyCode::KeyW) {
-        movement += *camera.forward();
+        delta += *camera.forward();
     }
     if keyboard.pressed(KeyCode::KeyS) {
-        movement += *camera.back();
+        delta += *camera.back();
     }
     if keyboard.pressed(KeyCode::KeyA) {
-        movement += *camera.left();
+        delta += *camera.left();
     }
     if keyboard.pressed(KeyCode::KeyD) {
-        movement += *camera.right();
+        delta += *camera.right();
     }
     if keyboard.pressed(KeyCode::Space) {
-        movement += Vec3::Y;
+        delta += Vec3::Y;
     }
     if keyboard.pressed(KeyCode::ShiftLeft) {
-        movement -= Vec3::Y;
+        delta -= Vec3::Y;
     }
 
-    if movement != Vec3::ZERO {
-        camera.translation += settings.move_speed * time.delta_secs() * movement.normalize();
+    if delta != Vec3::ZERO {
+        camera.translation += settings.move_speed * time.delta_secs() * delta.normalize();
     }
 }
