@@ -3,16 +3,9 @@ use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*, window::{CursorGrab
 const MOVE_SPEED: f32 = 1.0;
 const MOUSE_SENSITIVITY: f32 = 0.001;
 
-fn main() {
+fn main() -> AppExit {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_cursor_options: Some(CursorOptions {
-                grab_mode: CursorGrabMode::Locked,
-                visible: false,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(DefaultPlugins)
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_camera,
@@ -20,15 +13,14 @@ fn main() {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            move_camera,
+            (player_look, player_move).run_if(is_focused),
         ))
-        .run();
+        .run()
 }
 
 fn spawn_global_illumination(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {
-            illuminance: 10_000.0,
             shadow_maps_enabled: true,
             shadow_normal_bias: 1.0,
             shadow_depth_bias: 0.05,
@@ -60,6 +52,10 @@ fn spawn_voxel(
     ));
 }
 
+fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
+    cursor.grab_mode == CursorGrabMode::Locked
+}
+
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -80,50 +76,45 @@ fn toggle_cursor(
     }
 }
 
-fn move_camera(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
+fn player_look(
+    mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
-    // Don't move the camera if app is unfocused
-    if cursor.grab_mode == CursorGrabMode::None {
-        return;
-    }
-
-    // Look
-    let delta = mouse_motion.delta;
+    let delta = mouse.delta;
 
     if delta != Vec2::ZERO {
         camera.rotate_y(-delta.x * MOUSE_SENSITIVITY);
-
         camera.rotate_local_x(-delta.y * MOUSE_SENSITIVITY);
     }
+}
 
-    // Move
-    let mut movement = Vec3::ZERO;
+fn player_move(
+    time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut camera: Single<&mut Transform, With<Camera3d>>,
+) {
+    let mut delta = Vec3::ZERO;
 
     if keyboard.pressed(KeyCode::KeyW) {
-        movement += *camera.forward();
+        delta += *camera.forward();
     }
     if keyboard.pressed(KeyCode::KeyS) {
-        movement += *camera.back();
+        delta += *camera.back();
     }
     if keyboard.pressed(KeyCode::KeyA) {
-        movement += *camera.left();
+        delta += *camera.left();
     }
     if keyboard.pressed(KeyCode::KeyD) {
-        movement += *camera.right();
+        delta += *camera.right();
     }
     if keyboard.pressed(KeyCode::Space) {
-        movement += Vec3::Y;
+        delta += Vec3::Y;
     }
     if keyboard.pressed(KeyCode::ShiftLeft) {
-        movement -= Vec3::Y;
+        delta -= Vec3::Y;
     }
 
-    if movement != Vec3::ZERO {
-        camera.translation += MOVE_SPEED * time.delta_secs() * movement.normalize();
+    if delta != Vec3::ZERO {
+        camera.translation += MOVE_SPEED * time.delta_secs() * delta.normalize();
     }
 }
