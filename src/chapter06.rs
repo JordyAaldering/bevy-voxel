@@ -2,7 +2,7 @@ mod coordinates;
 
 use crate::coordinates::{ChunkCoord, VoxelCoord};
 
-use std::ops::{Index, IndexMut};
+use std::{mem, ops::{Index, IndexMut}};
 
 use better_default::Default;
 use bevy::prelude::*;
@@ -260,6 +260,42 @@ impl IndexMut<VoxelCoord> for Chunk {
     }
 }
 
+struct MeshData {
+    atlas: TextureAtlas,
+    vertices: Vec<Vec3>,
+    indices: Vec<u32>,
+    normals: Vec<Vec3>,
+    uvs: Vec<Vec2>,
+}
+
+impl MeshData {
+    fn new(atlas: TextureAtlas) -> Self {
+        Self {
+            atlas,
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            normals: Vec::new(),
+            uvs: Vec::new(),
+        }
+    }
+
+    fn add_face(&mut self, face: Face, origin: Vec3, texture: TextureAtlasPosition) {
+        let start = self.vertices.len() as u32;
+        self.vertices.extend_from_slice(&face.vertices(origin));
+        self.indices.extend_from_slice(&face.indices(start));
+        self.normals.extend_from_slice(&face.normals());
+        self.uvs.extend_from_slice(&self.atlas.uvs(texture));
+    }
+
+    fn build(&mut self) -> Mesh {
+        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mem::take(&mut self.vertices))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mem::take(&mut self.normals))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mem::take(&mut self.uvs))
+            .with_inserted_indices(Indices::U32(mem::take(&mut self.indices)))
+    }
+}
+
 #[derive(Default, Resource)]
 struct VoxelWorld {
     chunks: HashMap<ChunkCoord, Chunk>,
@@ -374,12 +410,8 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
 }
 
 fn build_mesh(chunk: &Chunk, chunk_pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
-    let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
-    let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
-    let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
-    let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
-
     let atlas = TextureAtlas { width: 4, height: 4 };
+    let mut mesh_data = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter() {
         if voxel.is_transparent() {
@@ -430,22 +462,14 @@ fn build_mesh(chunk: &Chunk, chunk_pos: ChunkCoord, world: &VoxelWorld) -> Mesh 
             }
 
             let face = Face { direction };
-            let texture = voxel.texture(direction);
             let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
+            let texture = voxel.texture(direction);
+            mesh_data.add_face(face, origin, texture);
 
-            let start = vertices.len() as u32;
-            vertices.extend_from_slice(&face.vertices(origin));
-            indices.extend_from_slice(&face.indices(start));
-            normals.extend_from_slice(&face.normals());
-            uvs.extend_from_slice(&atlas.uvs(texture));
         }
     }
 
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-        .with_inserted_indices(Indices::U32(indices))
+    mesh_data.build()
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {

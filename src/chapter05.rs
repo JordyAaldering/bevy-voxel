@@ -1,3 +1,9 @@
+mod coordinates;
+
+use std::mem;
+
+use crate::coordinates::{ChunkCoord, VoxelCoord};
+
 use better_default::Default;
 use bevy::prelude::*;
 use bevy::{
@@ -199,33 +205,53 @@ impl Chunk {
             None
         }
     }
+
+    fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, VoxelType)> {
+        (0..CHUNK_WIDTH).flat_map(move |z| {
+            (0..CHUNK_HEIGHT).flat_map(move |y| {
+                (0..CHUNK_WIDTH).map(move |x| {
+                    let idx = Chunk::index(x, y, z);
+                    (x, y, z, self.voxels[idx])
+                })
+            })
+        })
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct ChunkPosition {
-    x: i32,
-    z: i32,
+#[derive(Default)]
+struct MeshData {
+    vertices: Vec<Vec3>,
+    indices: Vec<u32>,
+    normals: Vec<Vec3>,
+    uvs: Vec<Vec2>,
 }
 
-impl ChunkPosition {
-    /// This chunk's origin in world space.
-    fn origin(self) -> Vec3 {
-        vec3(
-            self.x as f32 * CHUNK_WIDTH as f32,
-            0.0,
-            self.z as f32 * CHUNK_WIDTH as f32,
-        )
+impl MeshData {
+    fn add_face(&mut self, face: Face, origin: Vec3) {
+        let start = self.vertices.len() as u32;
+        self.vertices.extend_from_slice(&face.vertices(origin));
+        self.indices.extend_from_slice(&face.indices(start));
+        self.normals.extend_from_slice(&face.normals());
+        self.uvs.extend_from_slice(&face.uvs());
+    }
+
+    fn build(&mut self) -> Mesh {
+        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mem::take(&mut self.vertices))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mem::take(&mut self.normals))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mem::take(&mut self.uvs))
+            .with_inserted_indices(Indices::U32(mem::take(&mut self.indices)))
     }
 }
 
 #[derive(Default, Resource)]
 struct VoxelWorld {
-    chunks: HashMap<ChunkPosition, Chunk>,
+    chunks: HashMap<ChunkCoord, Chunk>,
 }
 
 impl VoxelWorld {
-    fn get_chunk_neighbor(&self, pos: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {
-        let neighbor_pos = ChunkPosition { x: pos.x + dx, z: pos.z + dz };
+    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&Chunk> {
+        let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
         self.chunks.get(&neighbor_pos)
     }
 }
@@ -293,14 +319,14 @@ fn spawn_world(
     for z in -1..=1 {
         for x in -1..=1 {
             let chunk = generate_chunk(x, z);
-            world.chunks.insert(ChunkPosition { x, z }, chunk);
+            world.chunks.insert(ChunkCoord::new(x, z), chunk);
         }
     }
 
     // Now we can generate the meshes
     for (&chunk_pos, chunk) in &world.chunks {
         commands.spawn((
-            Transform::from_translation(chunk_pos.origin()),
+            Transform::from_translation(chunk_pos.position()),
             Mesh3d(meshes.add(build_mesh(chunk, chunk_pos, &world))),
             MeshMaterial3d(material.clone()),
         ));
@@ -322,18 +348,10 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
     chunk
 }
 
-fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld) -> Mesh {
-    let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
-    let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
-    let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
-    let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
+fn build_mesh(chunk: &Chunk, pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
+    let mut mesh_data = MeshData::default();
 
-    for z in 0..CHUNK_WIDTH {
-    for y in 0..CHUNK_HEIGHT {
-    for x in 0..CHUNK_WIDTH {
-        let idx = Chunk::index(x, y, z);
-        let voxel = chunk.voxels[idx];
-
+    for (x, y, z, voxel) in chunk.iter() {
         if voxel.is_transparent() {
             continue;
         }
@@ -381,22 +399,11 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld) -> Mesh {
 
             let face = Face { direction };
             let origin = vec3(x as f32, y as f32, z as f32);
-
-            let start = vertices.len() as u32;
-            vertices.extend_from_slice(&face.vertices(origin));
-            indices.extend_from_slice(&face.indices(start));
-            normals.extend_from_slice(&face.normals());
-            uvs.extend_from_slice(&face.uvs());
+            mesh_data.add_face(face, origin);
         }
     }
-    }
-    }
 
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-        .with_inserted_indices(Indices::U32(indices))
+    mesh_data.build()
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {

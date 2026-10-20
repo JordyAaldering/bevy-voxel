@@ -241,3 +241,10 @@ Those are separate problems, and we don't need to solve them all at once.
 The important step is that we now have a chunk data structure and a mesh-generation algorithm that can skip hidden faces.
 
 Next, we can build on this foundation to make chunks interact with each other and form a larger voxel world.
+
+## Refactoring meshes
+
+In future, we'll be creating a mesh for each chunk.
+For this, it can be convenient to group vertices, indices, normals, and uvs into a single `MeshData` struct.
+That keeps the relevant data in one place, and we can add some convenience functions, like `add_face`.
+If you want, extract the mesh data into a separate struct now.
