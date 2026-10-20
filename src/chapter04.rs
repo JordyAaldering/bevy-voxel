@@ -261,11 +261,9 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
     let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
     let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
 
-    for (x, y, z, voxel) in chunk.iter() {
-        if voxel.is_transparent() {
-            continue;
-        }
-
+    for (x, y, z, voxel) in chunk.iter()
+        .filter(|(_, _, _, voxel)| *voxel != VoxelType::Air)
+    {
         for direction in Direction::iter() {
             // Always render the faces at the chunk boundary.
             // Skip faces that are adjacent to non-air voxels; they won't be visible.

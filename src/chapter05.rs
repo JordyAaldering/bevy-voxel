@@ -319,7 +319,9 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
 fn build_mesh(chunk: &Chunk, pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
     let mut mesh_data = MeshData::default();
 
-    for (x, y, z, voxel) in chunk.iter() {
+    for (x, y, z, voxel) in chunk.iter()
+        .filter(|(_, _, _, voxel)| *voxel != VoxelType::Air)
+    {
         if voxel.is_transparent() {
             continue;
         }

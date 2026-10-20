@@ -386,7 +386,9 @@ fn build_mesh(chunk: &Chunk, chunk_pos: ChunkCoord, world: &VoxelWorld) -> Mesh 
     let atlas = TextureAtlas { width: 4, height: 4 };
     let mut mesh_data = MeshData::new(atlas);
 
-    for (voxel_pos, voxel) in chunk.iter() {
+    for (voxel_pos, voxel) in chunk.iter()
+        .filter(|(_, voxel)| *voxel != VoxelType::Air)
+    {
         if voxel.is_transparent() {
             continue;
         }

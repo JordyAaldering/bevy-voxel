@@ -451,11 +451,9 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
 fn build_mesh(chunk: &Chunk, chunk_pos: ChunkCoord, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
     let mut mesh_data = MeshData::new(atlas);
 
-    for (voxel_pos, voxel) in chunk.iter() {
-        if voxel.is_transparent() {
-            continue;
-        }
-
+    for (voxel_pos, voxel) in chunk.iter()
+        .filter(|(_, voxel)| *voxel != VoxelType::Air)
+    {
         for direction in Direction::iter() {
             if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
                 if !neighbor.is_transparent() {
