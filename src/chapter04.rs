@@ -207,43 +207,6 @@ impl Direction {
     }
 }
 
-struct TextureAtlas {
-    width: usize,
-    height: usize,
-}
-
-#[derive(Clone, Copy)]
-struct TextureAtlasPosition {
-    x: usize,
-    y: usize,
-}
-
-impl TextureAtlas {
-    fn new(width: usize, height: usize) -> Self {
-        Self { width, height }
-    }
-
-    fn uvs(&self, tile: TextureAtlasPosition) -> [Vec2; 4] {
-        let tile_width = 1.0 / self.width as f32;
-        let tile_height = 1.0 / self.height as f32;
-        let x = tile.x as f32 * tile_width;
-        let y = tile.y as f32 * tile_height;
-        // Note that the Y axis is flipped in UV coordinates, so we need to flip the Y coordinate of the tile position
-        [
-            vec2(x, y + tile_height),              // Bottom left
-            vec2(x + tile_width, y + tile_height), // Bottom right
-            vec2(x, y),                            // Top left
-            vec2(x + tile_width, y),               // Top right
-        ]
-    }
-}
-
-impl TextureAtlasPosition {
-    fn new(x: usize, y: usize) -> Self {
-        Self { x, y }
-    }
-}
-
 struct Chunk {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
