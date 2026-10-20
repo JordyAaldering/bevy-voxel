@@ -15,7 +15,7 @@ pub struct VoxelCoord {
 }
 
 impl VoxelCoord {
-    pub fn new(x: usize, y: usize, z: usize) -> Self {
+    pub const fn new(x: usize, y: usize, z: usize) -> Self {
         debug_assert!(x < CHUNK_WIDTH);
         debug_assert!(y < CHUNK_HEIGHT);
         debug_assert!(z < CHUNK_WIDTH);
@@ -23,12 +23,12 @@ impl VoxelCoord {
     }
 
     /// The flattened index of the voxel in the chunk's voxel 1D array.
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self.x + CHUNK_WIDTH * (self.y + CHUNK_HEIGHT * self.z)
     }
 
     /// Returns the local position of this voxel within its chunk.
-    pub fn local_position(self) -> Vec3 {
+    pub const fn local_position(self) -> Vec3 {
         vec3(self.x as f32, self.y as f32, self.z as f32)
     }
 }
@@ -42,12 +42,12 @@ pub struct WorldCoord {
 }
 
 impl WorldCoord {
-    pub fn new(x: i32, y: i32, z: i32) -> Self {
+    pub const fn new(x: i32, y: i32, z: i32) -> Self {
         Self { x, y, z }
     }
 
     /// Returns the local position of the voxel within its chunk.
-    pub fn local_coord(self) -> VoxelCoord {
+    pub const fn local_coord(self) -> VoxelCoord {
         VoxelCoord {
             x: self.x.rem_euclid(CHUNK_WIDTH as i32) as usize,
             y: self.y as usize,
@@ -56,7 +56,7 @@ impl WorldCoord {
     }
 
     /// Returns the coordinate of the chunk that contains this voxel.
-    pub fn chunk_coord(self) -> ChunkCoord {
+    pub const fn chunk_coord(self) -> ChunkCoord {
         ChunkCoord {
             x: self.x.div_euclid(CHUNK_WIDTH as i32),
             z: self.z.div_euclid(CHUNK_WIDTH as i32),
@@ -64,7 +64,7 @@ impl WorldCoord {
     }
 
     /// Returns the position of this voxel in world space.
-    pub fn position(self) -> Vec3 {
+    pub const fn position(self) -> Vec3 {
         vec3(self.x as f32, self.y as f32, self.z as f32)
     }
 }
@@ -77,12 +77,12 @@ pub struct ChunkCoord {
 }
 
 impl ChunkCoord {
-    pub fn new(x: i32, z: i32) -> Self {
+    pub const fn new(x: i32, z: i32) -> Self {
         Self { x, z }
     }
 
     /// Returns the position of this chunk in world space.
-    pub fn position(self) -> Vec3 {
+    pub const fn position(self) -> Vec3 {
         vec3(self.x as f32 * CHUNK_WIDTH as f32, 0.0, self.z as f32 * CHUNK_WIDTH as f32)
     }
 }

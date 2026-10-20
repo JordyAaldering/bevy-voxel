@@ -18,7 +18,7 @@ pub enum Direction {
 
 impl Direction {
     /// Returns the outward-facing normal vector for this direction.
-    pub fn normal(&self) -> Vec3 {
+    pub const fn normal(&self) -> Vec3 {
         match self {
             Self::Right  => Vec3::X,
             Self::Left   => Vec3::NEG_X,
