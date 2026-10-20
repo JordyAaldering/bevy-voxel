@@ -22,28 +22,11 @@ struct CameraSettings {
     mouse_sensitivity: f32,
 }
 
-struct Voxel {
-    x: usize,
-    y: usize,
-    z: usize,
-}
-
-impl Voxel {
-    fn origin(&self) -> Vec3 {
-        vec3(self.x as f32, self.y as f32, self.z as f32)
-    }
-}
-
 struct Face {
-    origin: Vec3,
     direction: Direction,
 }
 
 impl Face {
-    fn new(origin: Vec3, direction: Direction) -> Self {
-        Self { origin, direction }
-    }
-
     /// Returns the four vertices of the quad.
     ///
     /// The quad is defined by the origin and direction of the face:
@@ -64,7 +47,7 @@ impl Face {
     ///
     /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
     fn vertices(&self) -> [Vec3; 4] {
-        let o = self.origin;
+        let o = Vec3::ZERO;
 
         match self.direction {
             Direction::Right => [
@@ -223,21 +206,20 @@ fn spawn_voxel(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let voxel = Voxel { x: 0, y: 0, z: 0 };
     commands.spawn((
-        Transform::from_translation(voxel.origin()),
-        Mesh3d(meshes.add(build_mesh(&voxel))),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        Mesh3d(meshes.add(build_mesh())),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
     ));
 }
 
-fn build_mesh(voxel: &Voxel) -> Mesh {
+fn build_mesh() -> Mesh {
     let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
     let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
     let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
     let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
 
-    for face in [
+    for direction in [
         Direction::Right,
         Direction::Left,
         Direction::Top,
@@ -245,7 +227,7 @@ fn build_mesh(voxel: &Voxel) -> Mesh {
         Direction::Front,
         Direction::Back,
     ] {
-        let face = Face::new(voxel.origin(), face);
+        let face = Face { direction };
 
         let start = vertices.len() as u32;
         vertices.extend_from_slice(&face.vertices());
