@@ -245,7 +245,7 @@ fn main() -> AppExit {
         ))
         .add_systems(Startup, (
             spawn_global_illumination,
-            spawn_camera,
+            spawn_player,
             spawn_world,
         ))
         .add_systems(Update, (
@@ -270,7 +270,7 @@ fn spawn_global_illumination(mut commands: Commands) {
     ));
 }
 
-fn spawn_camera(mut commands: Commands) {
+fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),

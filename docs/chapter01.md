@@ -23,7 +23,7 @@ We'll use a cuboid as our first voxel, even though we aren't building an actual 
 First, create a system to spawn the camera:
 
 ```rust
-fn spawn_camera(mut commands: Commands) {
+fn spawn_player(mut commands: Commands) {
     commands.spawn((
         todo!(),
         todo!(),

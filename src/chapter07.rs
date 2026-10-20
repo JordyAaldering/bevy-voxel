@@ -31,7 +31,7 @@ const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
 const GRAVITY: f32 = 20.0;
 
-#[derive(Resource, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
 enum GameMode {
     #[default]
     Survival,
@@ -320,6 +320,11 @@ struct VoxelWorld {
 }
 
 impl VoxelWorld {
+    pub fn is_solid(&self, pos: WorldPosition) -> bool {
+        self.get_voxel(pos)
+            .is_some_and(|voxel| voxel.is_solid())
+    }
+
     pub fn get_voxel(&self, pos: WorldPosition) -> Option<VoxelType> {
         if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
             return None;
@@ -379,8 +384,16 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (toggle_gamemode, player_look, player_move)
+            (toggle_gamemode, player_look)
                 .run_if(is_focused),
+            move_survival
+                .run_if(is_focused.and_then(is_gamemode_survival)),
+            move_spectator
+                .run_if(is_focused.and_then(is_gamemode_spectator)),
+        ))
+        .add_systems(FixedUpdate, (
+            player_physics
+                .run_if(is_gamemode_survival),
         ))
         .run()
 }
@@ -524,8 +537,8 @@ fn build_mesh(chunk: &Chunk, chunk_pos: ChunkPosition, world: &VoxelWorld, atlas
                         _ => unreachable!(),
                     };
 
-                    let pos = VoxelPosition { x: nx, y: ny, z: nz };
-                    let neighbor = neighbor_chunk[pos];
+                    let voxel_pos = VoxelPosition { x: nx, y: ny, z: nz };
+                    let neighbor = neighbor_chunk[voxel_pos];
                     if !neighbor.is_transparent() {
                         continue;
                     }
@@ -553,6 +566,14 @@ fn build_mesh(chunk: &Chunk, chunk_pos: ChunkPosition, world: &VoxelWorld, atlas
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor.grab_mode == CursorGrabMode::Locked
+}
+
+fn is_gamemode_survival(mode: Res<GameMode>) -> bool {
+    *mode == GameMode::Survival
+}
+
+fn is_gamemode_spectator(mode: Res<GameMode>) -> bool {
+    *mode == GameMode::Spectator
 }
 
 fn toggle_cursor(
@@ -593,8 +614,8 @@ fn toggle_gamemode(
 fn player_look(
     settings: Res<CameraSettings>,
     mouse: Res<AccumulatedMouseMotion>,
-    mut player: Single<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
     mut camera: Single<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
+    mut player: Single<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
 ) {
     let delta = mouse.delta;
 
@@ -611,89 +632,46 @@ fn player_look(
     }
 }
 
-fn player_move(
+fn move_spectator(
     time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mode: Res<GameMode>,
     settings: Res<CameraSettings>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    player: Single<(&mut Transform, &mut Player)>,
+) {
+    let (mut transform, mut player) = player.into_inner();
+
+    player.velocity = Vec3::ZERO;
+    player.grounded = false;
+
+    let delta = vec3(
+        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
+        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
+        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
+    );
+
+    if delta != Vec3::ZERO {
+        let direction = delta.x * transform.right() + delta.y * Vec3::Y + delta.z * transform.forward();
+        transform.translation += settings.move_speed * time.delta_secs() * direction.normalize();
+    }
+}
+
+fn move_survival(
+    time: Res<Time>,
+    settings: Res<CameraSettings>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     world: Res<VoxelWorld>,
     player: Single<(&mut Transform, &mut Player)>,
 ) {
     let (mut transform, mut player) = player.into_inner();
 
-    let mut movement = Vec3::ZERO;
-
-    if keyboard.pressed(KeyCode::KeyW) {
-        movement += *transform.forward();
-    }
-    if keyboard.pressed(KeyCode::KeyS) {
-        movement += *transform.back();
-    }
-    if keyboard.pressed(KeyCode::KeyA) {
-        movement += *transform.left();
-    }
-    if keyboard.pressed(KeyCode::KeyD) {
-        movement += *transform.right();
-    }
-
+    let delta = vec3(
+        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
+        0.0,
+        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
+    );
+    let movement = delta.x * transform.right() + delta.y * transform.forward();
     let movement = movement.normalize_or_zero();
 
-    match *mode {
-        GameMode::Survival => {
-            move_survival(
-                &mut transform,
-                &mut player,
-                movement,
-                &settings,
-                &keyboard,
-                &world,
-                time.delta_secs(),
-            );
-        }
-        GameMode::Spectator => {
-            move_spectator(
-                &mut transform,
-                &mut player,
-                movement,
-                &settings,
-                &keyboard,
-                time.delta_secs(),
-            );
-        }
-    }
-}
-
-fn move_spectator(
-    transform: &mut Transform,
-    player: &mut Player,
-    mut movement: Vec3,
-    settings: &CameraSettings,
-    keyboard: &ButtonInput<KeyCode>,
-    dt: f32,
-) {
-    player.velocity = Vec3::ZERO;
-    player.grounded = false;
-
-    if keyboard.pressed(KeyCode::Space) {
-        movement.y += 1.0;
-    }
-
-    if keyboard.pressed(KeyCode::ShiftLeft) {
-        movement.y -= 1.0;
-    }
-
-    transform.translation += movement.normalize_or_zero() * settings.move_speed * dt;
-}
-
-fn move_survival(
-    transform: &mut Transform,
-    player: &mut Player,
-    movement: Vec3,
-    settings: &CameraSettings,
-    keyboard: &ButtonInput<KeyCode>,
-    world: &VoxelWorld,
-    dt: f32,
-) {
     player.velocity.x = movement.x * settings.move_speed;
     player.velocity.z = movement.z * settings.move_speed;
 
@@ -702,9 +680,9 @@ fn move_survival(
         player.grounded = false;
     }
 
-    player.velocity.y -= GRAVITY * dt;
+    player.velocity.y -= GRAVITY * time.delta_secs();
 
-    move_with_collisions(&mut transform.translation, player, world, dt);
+    move_with_collisions(&mut transform.translation, &mut player, &world, time.delta_secs());
 }
 
 fn move_with_collisions(position: &mut Vec3, player: &mut Player, world: &VoxelWorld, dt: f32) {
@@ -738,7 +716,7 @@ fn move_y(
 
         for x in min_x..=max_x {
             for z in min_z..=max_z {
-                if world.get_voxel(WorldPosition { x, y, z }).map_or(false, |v| v.is_solid()) {
+                if world.is_solid(WorldPosition { x, y, z }) {
                     position.y = y as f32 + 1.0;
                     velocity.y = 0.0;
                     *grounded = true;
@@ -753,7 +731,7 @@ fn move_y(
 
         for x in min_x..=max_x {
             for z in min_z..=max_z {
-                if world.get_voxel(WorldPosition { x, y, z }).map_or(false, |v| v.is_solid()) {
+                if world.is_solid(WorldPosition { x, y, z }) {
                     position.y = y as f32 - PLAYER_HEIGHT;
                     velocity.y = 0.0;
                     return;
@@ -781,7 +759,7 @@ fn move_x(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
 
         for y in min_y..=max_y {
             for z in min_z..=max_z {
-                if world.get_voxel(WorldPosition { x, y, z }).map_or(false, |v| v.is_solid()) {
+                if world.is_solid(WorldPosition { x, y, z }) {
                     position.x = x as f32 - PLAYER_WIDTH_HALF;
                     velocity.x = 0.0;
                     return;
@@ -794,7 +772,7 @@ fn move_x(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
 
         for y in min_y..=max_y {
             for z in min_z..=max_z {
-                if world.get_voxel(WorldPosition { x, y, z }).map_or(false, |v| v.is_solid()) {
+                if world.is_solid(WorldPosition { x, y, z }) {
                     position.x = x as f32 + 1.0 + PLAYER_WIDTH_HALF;
                     velocity.x = 0.0;
                     return;
@@ -822,7 +800,7 @@ fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
 
         for x in min_x..=max_x {
             for y in min_y..=max_y {
-                if world.get_voxel(WorldPosition { x, y, z }).map_or(false, |v| v.is_solid()) {
+                if world.is_solid(WorldPosition { x, y, z }) {
                     // Put the player's front edge against the voxel
                     position.z = z as f32 - PLAYER_WIDTH_HALF;
                     velocity.z = 0.0;
@@ -836,7 +814,7 @@ fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
 
         for x in min_x..=max_x {
             for y in min_y..=max_y {
-                if world.get_voxel(WorldPosition { x, y, z }).map_or(false, |v| v.is_solid()) {
+                if world.is_solid(WorldPosition { x, y, z }) {
                     // Put the player's back edge against the voxel
                     position.z = z as f32 + 1.0 + PLAYER_WIDTH_HALF;
                     velocity.z = 0.0;
@@ -845,4 +823,14 @@ fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32)
             }
         }
     }
+}
+
+fn player_physics(
+    time: Res<Time>,
+    world: Res<VoxelWorld>,
+    mut player: Single<(&mut Transform, &mut Player)>,
+) {
+    let (mut transform, mut player) = player.into_inner();
+
+    todo!()
 }

@@ -1,5 +1,4 @@
 use better_default::Default;
-use bevy::gizmos::transform_gizmo::TransformGizmoAxis::Z;
 use bevy::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
@@ -223,7 +222,7 @@ fn main() -> AppExit {
         .register_type::<CameraSettings>()
         .add_systems(Startup, (
             spawn_global_illumination,
-            spawn_camera,
+            spawn_player,
             spawn_chunk,
         ))
         .add_systems(Update, (
@@ -248,7 +247,7 @@ fn spawn_global_illumination(mut commands: Commands) {
     ));
 }
 
-fn spawn_camera(mut commands: Commands) {
+fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
