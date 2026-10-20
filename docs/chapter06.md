@@ -40,7 +40,7 @@ It is, however, consistent with how most image file formats store pixel data, an
 
 The easiest way to solve this is by flipping the top and bottom coordinates in `TextureAtlas::uvs`.
 
----
+## Bevy's built-in TextureAtlas
 
 TextureAtlas: to show how it works I created a simple TextureAtlas here, but we can actually just use Bevy's built-in `TextureAtlas` type.
 (You should know this if you read the https://bevy.org/news/introducing-bevy/ :D )
