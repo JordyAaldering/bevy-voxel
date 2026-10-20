@@ -144,6 +144,7 @@ impl Face {
     }
 }
 
+#[derive(Clone, Copy)]
 enum Direction {
     /// Increasing x
     Right,
