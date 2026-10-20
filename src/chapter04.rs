@@ -287,7 +287,7 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
         ] {
             // Always render the faces at the chunk boundary.
             // Skip faces that are adjacent to non-air voxels; they won't be visible.
-            if let Some(VoxelType::Air) = chunk.get_neighbor_voxel(x, y, z, direction) {
+            if let Some(VoxelType::Grass) = chunk.get_neighbor_voxel(x, y, z, direction) {
                 continue;
             }
 
