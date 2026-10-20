@@ -13,3 +13,9 @@ We don't place chunks vertically so y can remain unchanged, just check that it r
 
 Create a player struct.
 It would be convenient to still be able to go back to freecam mode, so we also add an enum `CameraMode`.
+
+## Fixed Update
+
+For physics, we need to separate player input from the physics calculation.
+We **must** run the input function every frame, because we might miss inputs.
+But the physics simulation is typically run during the `FixedUpdate` schedule.
