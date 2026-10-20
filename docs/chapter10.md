@@ -5,6 +5,9 @@ However, what we want is for the world to be infinitely generated.
 Of course, we cannot generate the entire, infinite world all at once.
 Instead, we should only generate chunks that are within some distance to the player.
 
+Currently, we naively generate all chunks in a 3x3 square around the player.
+It would be better to generate chunks in a circular radius instead, so implement that now if you want.
+
 ## Disabling meshes
 
 If the player has been exploring for a while, many chunks/meshes will still be active that the player can't even see.
