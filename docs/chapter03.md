@@ -1,23 +1,28 @@
 # Creating a voxel mesh
 
 In a real voxel game, we don't want to create a separate `Cuboid` for every voxel.
-Instead, we want to generate a single mesh for each chunk, containing only the visible faces of its voxels.
-This reduces the amount of geometry we need to send to the GPU.
+Instead, we want to combine the visible faces of many voxels into a single mesh for each chunk.
+This reduces the amount of geometry we need to render.
 
 Before we get to chunks, let's start with a single voxel and build its mesh ourselves.
-This gives us a better understanding of what a mesh actually contains.
+Along the way, we'll look at how meshes work in general.
+Once you understand the underlying concepts, you can use them to generate all kinds of geometry, not just voxels.
 
-If you're unfamiliar with Bevy's coordinate system, I recommend reading the [coordinate systems section of the Bevy Cheat Book](https://bevy-cheatbook.github.io/fundamentals/coords.html).
+## What is a mesh?
 
-## What makes up a mesh?
+A mesh describes the shape of a 3D object.
+It consists of vertices, which define points in space, and indices, which define how those points are connected.
 
-A mesh describes the geometry of an object.
-At its simplest, it consists of vertices and indices.
-- A **vertex** represents a point in space.
-- An **index** refers to a vertex, allowing us to construct triangles without storing the same vertex position repeatedly.
+A vertex is more than just a position, though.
+It can also contain information such as a normal, texture coordinates, or a colour.
+These attributes determine how the surface looks when rendered.
 
-Graphics cards only draw triangles, so a rectangle actually exists of two triangles.
-We can represent one rectangle using four vertices and six indices:
+Most real-time 3D graphics are built from triangles.
+Triangles are simple to render, always lie on a plane, and can be used to approximate almost any surface.
+Even a model that looks smooth or curved is typically made up of many small triangles.
+
+A cube has six faces.
+Each face is a quadrilateral, which we can split into two triangles:
 
 ```text
 v2 +---------+ v3
@@ -26,94 +31,65 @@ v2 +---------+ v3
    |    /    |
    |  /      |
 v0 +---------+ v1
-
-Triangles:
-(v0, v1, v2)
-(v2, v1, v3)
 ```
 
-The exact ordering of the vertices matters.
-Graphics APIs use the winding order of a triangle to determine which side is its front face.
-If we get this wrong, faces may appear invisible because their front is facing away from the camera.
+The diagonal divides the face into two triangles: `(v0, v1, v2)` and `(v2, v1, v3)`.
 
-A cube has six faces, each consisting of two triangles.
-That is a total of 6 x 4 = 24 vertices and 6 x 2 x 3 = 36 indices.
-We could define all 24 vertices and 36 indices manually, but that would be repetitive.
-Instead, we'll define a `Face` that knows how to generate its own vertices and indices, then use it to construct all six faces of our voxel.
+A cube has eight unique corners, but our mesh will initially contain 24 vertices: four for each of its six faces.
+This might seem wasteful, but there's a reason for it that we'll get to later.
 
-## Representing a voxel
+For now, the important idea is that **a mesh is data describing geometry and its surface properties**.
+It doesn't inherently know what a voxel is, how big a cube should be, or which faces are visible.
+Those are decisions we make when generating the mesh.
 
-First, let's define a voxel:
+## Positions and coordinate systems
 
-```rust
-struct Voxel {
-    x: usize,
-    y: usize,
-    z: usize,
-}
+Before generating geometry, we need to decide where its vertices should be.
+
+Our voxel grid uses integer coordinates to identify each voxel.
+A voxel at `(2, 1, 3)`, for example, occupies the space between `(2, 1, 3)` and `(3, 2, 4)`.
+
+```text
+             y
+             |
+        +---------+
+       /         /|
+      +---------+ |
+      |         | +
+      |         |/
+      +---------+------ x
+     /
+    z
+
+    Origin: (2, 1, 3)
+    Size:   (1, 1, 1)
 ```
 
-These coordinates identify the voxel in the voxel grid, they describe which cell in a chunk the voxel occupies.
+This illustrates an important distinction: **the position of an object is not the same as the positions of its vertices**.
 
-## Defining a face
+We can define a cube around the origin, with corners ranging from `(0, 0, 0)` to `(1, 1, 1)`, and then translate it to wherever the voxel belongs in the world.
+Alternatively, we could generate its vertices directly at their world positions.
 
-Every cube has six faces, one facing each direction along the three axes.
-Let's represent those directions with an enum `Direction`.
+Both approaches can work.
+Keeping geometry relative to an origin is often convenient because the same geometry can be reused at different positions.
+In Bevy, we can also use a `Transform` to position an entity independently of its mesh.
 
-Each vertex also contains a _normal vector_.
-This vector describes which way the surface is facing, and is used for lighting calculations.
-For a voxel, the normal is always the same as the direction of the face.
+For our voxel, we'll use its grid coordinates as the origin and generate the corners relative to that position.
+Each voxel has a size of one unit along each axis.
 
-This also explains why we need 24 vertices, rather than eight.
-Although the corners of a cube are shared between three faces, each face has its own normal.
-Thus, although the positions of the vertices are the same, the normals differ, so we need separate vertices for each face.
+This approach generalizes beyond cubes.
+A sphere, for example, can be generated around its centre, and a terrain mesh can use coordinates relative to the terrain's origin.
+The underlying principle is the same: decide which coordinate space your geometry uses, and be consistent.
 
-The front and back directions lie along the Z axis.
-Bevy considers positive Z to be forward, so moving backward decreases Z.
+If you're unfamiliar with Bevy's coordinate system, the [Bevy Cheat Book's coordinate systems section](https://bevy-cheatbook.github.io/fundamentals/coords.html) is a useful reference.
 
-For simplicity, we can implement a new function `Direction::normal` that return the appropriate unit vector for its direction.
+## Constructing triangles
 
-Now we can define a face by its origin and direction:
+We know where our vertices are, but the renderer still needs to know which vertices form each triangle.
+This is what indices are for.
 
-```rust
-struct Face {
-    origin: Vec3,
-    direction: Direction,
-}
-```
-
-The origin is the voxel's position in local space in the chunk (or in this case, the world).
-The direction tells us which of the voxel's six faces we're constructing.
-
-## Generating vertices
-
-Each face has four corners.
-Their positions depend on the face's direction and the voxel's origin.
-
-For example, the top face lies at `y + 1`, while the bottom face lies at `y`.
-The other four faces follow the same principle, using the appropriate combination of the voxel's minimum and maximum coordinates.
-
-Our `Face::vertices()` method returns the four corner positions in a consistent order:
-
-```rust
-fn vertices(&self) -> [Vec3; 4] {
-    // Return the four corners of this face,
-    // in the correct winding order.
-}
-```
-
-The actual implementation handles all six directions.
-Notice that we generate positions relative to the voxel's origin rather than hard-coding the coordinates of the voxel in the world.
-
-This means the same face-generation logic works regardless of where the voxel is placed.
-
-## Turning vertices into triangles
-
-A face is a quadrilateral, but our mesh is made of triangles.
-We need to tell the renderer which vertices form each triangle.
-
-We do this with indices.
-Given four vertices, we can construct two triangles using six indices:
+Imagine that we store the four corners of a face in an array.
+The indices `0, 1, 2` identify the first triangle, while `2, 1, 3` identify the second.
 
 ```text
 v2 +---------+ v3
@@ -123,62 +99,94 @@ v2 +---------+ v3
    | /       |
 v0 +---------+ v1
 
-Indices:
-0, 1, 2
-2, 1, 3
+Triangle 1: 0, 1, 2
+Triangle 2: 2, 1, 3
 ```
 
-The indices refer to positions in the vertex array, not coordinates in 3D space.
-For example, index `0` refers to the first vertex we added.
+Indices refer to entries in the vertex array, not to positions in 3D space.
+This distinction lets us reuse vertex data without repeating entire positions for every triangle.
 
-Our `Face::indices()` method accepts a starting index:
+For our cube, each face contributes two triangles.
+With six faces, we get twelve triangles in total.
 
-```rust
-fn indices(&self, start: u32) -> [u32; 6]
-```
+When constructing a mesh, we also need to consider the order in which the vertices are listed.
+This is called the **winding order**.
 
-Why do we need `start`? Because our voxel has six faces, and each face appends four vertices to the same array.
-The second face must refer to vertices `4` through `7`, the third to `8` through `11`, and so on.
+### Winding order and face orientation
 
-The starting index lets us reuse the same triangle pattern for every face.
-It also ensures that each triangle uses the correct winding order, so the outward-facing side of the cube is treated as the front.
+A triangle has two sides.
+Graphics pipelines commonly use the winding order of its vertices to determine which side is the front.
+This allows back-face culling: the renderer can skip triangles facing away from the camera.
 
-## Normals and UV coordinates
-
-Vertices and indices describe the shape of our mesh, but they aren't the only information a renderer needs.
-We also want the voxel to respond to lighting and display a texture.
-
-### Normals
-
-A normal describes the direction a surface faces.
-Lighting calculations use normals to determine how light interacts with a surface.
-
-For our cube, all four vertices of a face share the same normal.
-A top face, for example, has a normal pointing straight up:
+For example, looking at a triangle from one side, its vertices might appear in clockwise order.
+Looking at it from the other side, they appear counterclockwise.
+The order of the indices therefore determines which side is considered the front.
 
 ```text
-       Normal: +Y
-          ↑
-     +---------+
-    /         /|
-   +---------+ |
-   |         | +
-   |         |/
-   +---------+
+Counterclockwise:       Clockwise:
+
+v2                      v1
+| \                      \ \
+|  \                      \ \
+v0--v1                     v0--v2
 ```
 
-We can implement `Face::normals()` by repeating the face's direction normal four times.
+The exact convention depends on the graphics pipeline and its configuration, so don't rely on intuition alone.
+The practical rule is to keep your winding order consistent and ensure that the outside of your mesh is oriented correctly.
 
-This gives the renderer the information it needs to shade the face correctly.
-Later, when we generate meshes for more complex shapes, normals will become more interesting.
+This matters especially for voxels because every face has a clear outward-facing direction.
+If we generate a face with the wrong winding order, it might disappear when viewed from outside the cube.
 
-### UV coordinates
+It also matters when generating more complex shapes.
+If some triangles face inward while others face outward, the mesh may render inconsistently.
 
-A mesh's geometry is independent of its texture.
-To tell the renderer how to apply a texture, each vertex also needs a pair of UV coordinates.
+## Surface normals
 
-UV coordinates describe positions on a 2D texture.
-Both axes typically range from `0.0` to `1.0`, regardless of the texture's pixel dimensions.
+Winding order tells the renderer which side of a triangle is the front, but it doesn't fully describe how the surface should respond to light.
+For that, we need **normals**.
+
+A normal is a vector perpendicular to a surface.
+For a flat face of a cube, the normal points directly outward:
+
+```text
+             +Y
+              ↑
+         +---------+
+        /         /|
+       +---------+ |
+       |         | +
+       |         |/
+       +---------+
+```
+
+The top face has a normal pointing along positive Y.
+The bottom face points along negative Y.
+The remaining faces point along positive or negative X and Z.
+
+Normals are used by lighting calculations to determine how light interacts with a surface.
+A surface facing directly toward a light generally receives more direct illumination than one facing away from it.
+
+For a flat-shaded cube, all four vertices of a face have the same normal.
+Adjacent faces have different normals, which gives the cube its sharp edges.
+
+You might wonder why normals are stored per vertex if they describe a surface.
+It's because rendering commonly interpolates vertex attributes across triangles.
+Giving neighbouring faces separate vertices lets each face have its own normal, even when their vertices occupy the same spatial position.
+
+For a smooth surface, we can instead use normals that vary across the mesh.
+A sphere, for example, often uses normals pointing approximately outward from its centre.
+This makes lighting appear smooth even though the geometry consists of flat triangles.
+
+The geometry determines the actual shape.
+Normals influence how that shape is shaded.
+
+## Texture coordinates
+
+A mesh can have correct geometry and lighting and still need information about how an image should cover its surface.
+This is where **UV coordinates** come in.
+
+UV coordinates associate each vertex with a position in a 2D texture.
+They are usually represented by two values, conventionally called U and V.
 
 ```text
 (0, 0) +---------+ (1, 0)
@@ -188,160 +196,98 @@ Both axes typically range from `0.0` to `1.0`, regardless of the texture's pixel
 (0, 1) +---------+ (1, 1)
 ```
 
-Each vertex receives a UV coordinate corresponding to a point on the texture.
-The renderer interpolates those coordinates across the triangles, allowing the texture to cover the entire face.
+These coordinates are independent of the mesh's 3D positions.
+A vertex at `(0, 1, 0)` could use the UV coordinate `(0.5, 0.5)`, for example.
+The first pair describes where the vertex is in 3D space; the second describes which point of the texture maps to it.
 
-For a face using the whole texture, we can use these four coordinates:
+For a face using an entire texture, we can assign its four corners to the four corners of the UV square.
+The renderer interpolates those coordinates across the triangles and samples the texture accordingly.
 
-```rust
-[
-    Vec2::new(0.0, 0.0),
-    Vec2::new(1.0, 0.0),
-    Vec2::new(0.0, 1.0),
-    Vec2::new(1.0, 1.0),
-]
-```
+The order matters here, too.
+UV coordinates must correspond to the same vertices as the positions.
+If you assign them in a different order, the texture may appear flipped, rotated, or stretched.
 
-The order must correspond to the order of the face's vertices.
-Otherwise, the texture may appear rotated or distorted.
+UVs aren't limited to cubes or even flat surfaces.
+They are how we map 2D images onto arbitrary 3D geometry.
+For example, a character model can use a carefully arranged UV layout to map different parts of its surface onto a single image.
 
-So far, every face uses the entire texture.
-That works for a simple test texture, but voxel games usually have several block textures packed into a single image.
-This is where a texture atlas comes in.
+We'll return to texture selection and atlases later.
+For now, we only need to understand that UV coordinates describe how a texture is mapped onto the mesh, not the shape of the mesh itself.
 
-## Using a texture atlas
+## Building our cube
 
-A texture atlas is a single image containing multiple smaller textures.
-Instead of loading a separate image for every block type, we can store them together and select the part we want when rendering a face.
+We now have the concepts needed to generate a cube mesh:
 
-For example, imagine an atlas containing four tiles:
+- **Positions** describe where the vertices are.
+- **Indices** describe which vertices form each triangle.
+- **Normals** describe which way the surface faces for lighting.
+- **UV coordinates** describe how a texture maps onto the surface.
 
-```text
-          U
-          0       0.5       1
-          +---------+---------+
-    0     |         |         |
-          |  Grass  |  Stone  |
-          |         |         |
-   0.5    +---------+---------+
-          |         |         |
-          |  Dirt   |  Sand   |
-          |         |         |
-    1     +---------+---------+
-          V
-```
-
-Each tile occupies a quarter of the atlas.
-The UV coordinates for a face using the grass tile must therefore cover only the corresponding region, rather than the entire image.
-
-For example, if the grass tile occupies the top-left quarter, its UV coordinates cover the range `0.0` to `0.5` on both axes.
-We map the four face vertices to the four corners of that region.
+Each face needs four vertices, six indices, four normals, and four UV coordinates.
+We can generate those values for each of the six directions and append them to our mesh data.
 
 ```text
-Atlas UVs:              Face UVs:
-
-(0, 0) +----+ (0.5, 0)  (0, 0) +----+ (1, 0)
-       |Grass|                 |    |
-       |     |                 |    |
-(0, .5)+-----+          (0, 1) +----+ (1, 1)
+                 Voxel
+                   |
+          +--------+--------+
+          |        |        |
+        Right     Left     Top
+          |        |        |
+          +--------+--------+
+                   |
+             Bottom, Front,
+                 Back
+                   |
+                   v
+             Mesh attributes
+                   |
+                   v
+                Bevy Mesh
 ```
 
-The face still has four vertices and two triangles.
-Only the UV coordinates change.
+The mesh data is stored in separate arrays because each type of attribute serves a different purpose.
+The positions and normals are arrays of vectors, UV coordinates are two-dimensional vectors, and indices are integers referring to vertices.
 
-In this chapter, we'll use a small custom `TextureAtlas` implementation to demonstrate how the mapping works.
-The important parts are:
+We then pass this data to Bevy's `Mesh` type.
+We specify that the mesh uses a triangle list, meaning every three indices define a triangle, and insert the attributes and indices into the mesh.
 
-- **Atlas layout:** describes how the image is divided into tiles.
-- **Tile selection:** identifies which tile a face should use.
-- **UV mapping:** converts the selected tile's boundaries into UV coordinates for the face.
+You don't need to memorize every Bevy API involved.
+What matters is understanding the data we're constructing and how the pieces relate to each other.
+Once that is clear, the API becomes a way to express the concepts rather than something to copy without understanding.
 
-Keeping these concepts separate makes the implementation easier to understand.
-It also means we can change the atlas layout or select a different tile without changing the mesh geometry.
+One detail worth keeping in mind is that **the number of vertices isn't necessarily the number of unique points in space**.
+Our cube has eight unique corners, but we generate 24 vertices because each face needs independent surface attributes.
+This is a common pattern in mesh generation, not a special rule for voxels.
 
-Bevy already provides built-in types for texture atlases.
-In particular, `TextureAtlasLayout` describes the layout, while `TextureAtlas` identifies a selected tile when used with supported rendering components.
-Once you understand how the mapping works, you can switch to Bevy's built-in implementation rather than maintaining a custom one.
-See the [Bevy documentation](https://docs.rs/bevy/latest/bevy/prelude/struct.TextureAtlasLayout.html) for details.
+## Rendering the mesh
 
-## Building the mesh
+We can now replace Bevy's built-in `Cuboid` with our generated mesh.
+The entity still has a transform and a material; only the source of its geometry changes.
 
-We now have everything needed to construct a voxel mesh: vertices, indices, normals, and UV coordinates.
+When you run the game, the result should look much like it did before.
+The difference is that we now control how the geometry is constructed.
 
-Our `build_mesh()` function creates arrays to hold this data, then iterates over the six directions.
-For each direction, it creates a `Face` and appends that face's data to the corresponding arrays.
+Try changing the coordinates of the vertices, adjusting the normals, or changing the UV coordinates.
+Observe how each change affects the result.
+Reversing the winding order is also a useful experiment: it demonstrates why triangle orientation matters.
 
-Conceptually, the process looks like this:
+These are small changes, but they build an intuition for debugging mesh-generation problems.
+When a mesh looks wrong, ask yourself which part of its data is responsible:
 
-```text
-Voxel
-  |
-  +-- Right face  -- vertices, indices, normals, UVs
-  +-- Left face   -- vertices, indices, normals, UVs
-  +-- Top face    -- vertices, indices, normals, UVs
-  +-- Bottom face -- vertices, indices, normals, UVs
-  +-- Front face  -- vertices, indices, normals, UVs
-  +-- Back face   -- vertices, indices, normals, UVs
-                         |
-                         v
-                       Mesh
-```
+- Is the geometry in the right place?
+- Are the indices connecting the intended vertices?
+- Are the triangles facing the right way?
+- Are the normals correct?
+- Are the UV coordinates mapped to the intended parts of the texture?
 
-Each face contributes four vertices and six indices.
-For a complete cube, that gives us:
-
-| Data | Number of entries |
-|---|---:|
-| Positions | 24 |
-| Indices | 36 |
-| Normals | 24 |
-| UV coordinates | 24 |
-
-You might wonder why we store 24 vertices when a cube has only eight unique corners.
-Each face needs its own vertices because attributes such as normals and UV coordinates can differ at the same spatial position.
-Sharing a vertex between faces would prevent us from assigning different per-face values to it.
-
-Once we've collected the arrays, we create a Bevy `Mesh`:
-
-```rust
-let mut mesh = Mesh::new(
-    PrimitiveTopology::TriangleList,
-    RenderAssetUsages::default(),
-);
-```
-
-`PrimitiveTopology::TriangleList` tells Bevy to interpret each group of three indices as a triangle.
-We then insert the position, normal, and UV attributes, followed by the index buffer.
-
-`RenderAssetUsages` controls where the mesh data is retained for rendering and asset access.
-You don't need to understand its details yet; the [Bevy documentation](https://docs.rs/bevy/latest/bevy/asset/struct.RenderAssetUsages.html) explains the available options.
-
-The important part is that the mesh is just the result of combining the data we've generated.
-Bevy doesn't need to know that it came from a voxel or that we built it face by face.
-
-## Rendering our voxel
-
-Finally, we can replace the built-in `Cuboid` in `spawn_voxel()` with our generated mesh:
-
-```rust
-commands.spawn((
-    Mesh3d(meshes.add(build_mesh(&voxel))),
-    Transform::from_translation(voxel.origin()),
-));
-```
-
-Run the game.
-The voxel should look the same as before, even though we're now generating its geometry ourselves.
-
-Try changing the voxel's coordinates, modifying the normals, or changing the UV coordinates.
-These experiments help demonstrate how each part of the mesh affects the result.
-You can also reverse the triangle winding order to see what happens when the faces point the wrong way.
+That way of reasoning applies to almost any mesh you generate.
 
 ## What's next?
 
-We can now generate a mesh for an individual voxel, but we're still generating all six faces.
-If we place two voxels next to each other, the faces between them are hidden, yet our meshes still contain them.
+We've generated a mesh for a single voxel, but we're still creating all six faces, regardless of whether they're visible.
 
-Those hidden faces waste memory and rendering work.
-The next step is to combine multiple voxels into a chunk mesh and omit faces that are covered by neighbouring voxels.
-That's where this basic face-generation code starts to become useful.
+Place two voxels next to each other and the faces between them are hidden.
+We don't need to render those faces, yet our current approach generates them anyway.
+
+The next step is to generate a mesh from multiple voxels, skipping faces that are covered by neighbouring voxels.
+This will give us the foundation for chunk meshes, where we combine many voxels into one mesh and avoid generating geometry that the player can never see.
