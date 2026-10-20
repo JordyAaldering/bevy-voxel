@@ -246,5 +246,10 @@ Next, we can build on this foundation to make chunks interact with each other an
 
 In future, we'll be creating a mesh for each chunk.
 For this, it can be convenient to group vertices, indices, normals, and uvs into a single `MeshData` struct.
-That keeps the relevant data in one place, and we can add some convenience functions, like `add_face`.
+That keeps the relevant data in one place, and we can add some convenience functions, like `add_quad`.
 If you want, extract the mesh data into a separate struct now.
+
+Now might also be a good time to get rid of the `Face` struct.
+It was useful for generating a single cube, but now that we're generating many faces, it adds unnecessary complexity.
+Its logic can be moved into the `MeshData` instead.
+If you put the `MeshData` in a separate file, you can more easily determine which parts are specific to rendering, and should be there.
