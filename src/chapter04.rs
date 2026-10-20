@@ -1,5 +1,3 @@
-use std::ops::{Index, IndexMut};
-
 use better_default::Default;
 use bevy::prelude::*;
 use bevy::{
@@ -13,8 +11,8 @@ use bevy_inspector_egui::bevy_egui::prelude::*;
 use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
-const CHUNK_WIDTH: usize = 32;
-const CHUNK_HEIGHT: usize = 64;
+const CHUNK_WIDTH: usize = 3;
+const CHUNK_HEIGHT: usize = 4;
 
 #[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
@@ -33,50 +31,11 @@ enum VoxelType {
     Grass,
 }
 
-impl VoxelType {
-    fn is_transparent(&self) -> bool {
-        match self {
-            Self::Air => true,
-            Self::Grass => false,
-        }
-    }
-}
-
-/// Chunk-local voxel position, with x and z in [0, CHUNK_WIDTH) and y in [0, CHUNK_HEIGHT).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct VoxelPosition {
-    x: usize,
-    y: usize,
-    z: usize,
-}
-
-impl VoxelPosition {
-    fn new(x: usize, y: usize, z: usize) -> Self {
-        debug_assert!(x < CHUNK_WIDTH);
-        debug_assert!(y < CHUNK_HEIGHT);
-        debug_assert!(z < CHUNK_WIDTH);
-        Self { x, y, z }
-    }
-
-    fn origin(&self) -> Vec3 {
-        vec3(self.x as f32, self.y as f32, self.z as f32)
-    }
-
-    fn to_index(self) -> usize {
-        self.x + CHUNK_WIDTH * (self.y + CHUNK_HEIGHT * self.z)
-    }
-}
-
 struct Face {
-    origin: Vec3,
     direction: Direction,
 }
 
 impl Face {
-    fn new(origin: Vec3, direction: Direction) -> Self {
-        Self { origin, direction }
-    }
-
     /// Returns the four vertices of the quad.
     ///
     /// The quad is defined by the origin and direction of the face:
@@ -96,9 +55,7 @@ impl Face {
     /// ```
     ///
     /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
-    fn vertices(&self) -> [Vec3; 4] {
-        let o = self.origin;
-
+    fn vertices(&self, o: Vec3) -> [Vec3; 4] {
         match self.direction {
             Direction::Right => [
                 o + Vec3::X + Vec3::Z,
@@ -211,24 +168,14 @@ struct Chunk {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
-#[derive(Default)]
-struct MeshData {
-    vertices: Vec<Vec3>,
-    indices: Vec<u32>,
-    normals: Vec<Vec3>,
-    uvs: Vec<Vec2>,
-}
-
 impl Chunk {
-    fn new() -> Self {
-        Self {
-            voxels: [VoxelType::Air; _],
-        }
+    fn index(x: usize, y: usize, z: usize) -> usize {
+        x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
 
-    fn get_neighbor_voxel(&self, pos: VoxelPosition, direction: Direction) -> Option<VoxelType> {
-        let VoxelPosition { x, y, z } = pos;
-
+    fn get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: Direction) -> Option<VoxelType> {
+        // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
+        // which is definitely greather than the width and height.
         let (x, y, z) = match direction {
             Direction::Right => (x + 1, y, z),
             Direction::Left => (x.wrapping_sub(1), y, z),
@@ -239,26 +186,11 @@ impl Chunk {
         };
 
         if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            let pos = VoxelPosition { x, y, z };
-            let idx = pos.to_index();
+            let idx = Chunk::index(x, y, z);
             Some(self.voxels[idx])
         } else {
             None
         }
-    }
-}
-
-impl Index<VoxelPosition> for Chunk {
-    type Output = VoxelType;
-
-    fn index(&self, pos: VoxelPosition) -> &Self::Output {
-        &self.voxels[pos.to_index()]
-    }
-}
-
-impl IndexMut<VoxelPosition> for Chunk {
-    fn index_mut(&mut self, pos: VoxelPosition) -> &mut Self::Output {
-        &mut self.voxels[pos.to_index()]
     }
 }
 
@@ -311,13 +243,13 @@ fn spawn_chunk(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mut chunk = Chunk::new();
+    let mut chunk = Chunk { voxels: [VoxelType::Air; _] };
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
             for z in 0..CHUNK_WIDTH {
-                let pos = VoxelPosition::new(x, y, z);
-                chunk[pos] = VoxelType::Grass;
+                let idx = Chunk::index(x, y, z);
+                chunk.voxels[idx] = VoxelType::Grass;
             }
         }
     }
@@ -330,21 +262,22 @@ fn spawn_chunk(
 }
 
 fn build_mesh(chunk: &Chunk) -> Mesh {
-    let mut mesh = MeshData::default();
+    let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
+    let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
+    let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
+    let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
 
     for z in 0..CHUNK_WIDTH {
     for y in 0..CHUNK_HEIGHT {
     for x in 0..CHUNK_WIDTH {
-        let pos = VoxelPosition { x, y, z };
-        let voxel = chunk[pos];
+        let idx = Chunk::index(x, y, z);
+        let voxel = chunk.voxels[idx];
 
         if voxel == VoxelType::Air {
             continue;
         }
 
-        let origin = pos.origin();
-
-        for face in [
+        for direction in [
             Direction::Right,
             Direction::Left,
             Direction::Top,
@@ -352,29 +285,30 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
             Direction::Front,
             Direction::Back,
         ] {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(pos, face) {
-                if !neighbor.is_transparent() {
-                    continue;
-                }
+            // Always render the faces at the chunk boundary.
+            // Skip faces that are adjacent to non-air voxels; they won't be visible.
+            if let Some(VoxelType::Air) = chunk.get_neighbor_voxel(x, y, z, direction) {
+                continue;
             }
 
-            let face = Face::new(origin, face);
+            let face = Face { direction };
+            let origin = Vec3::new(x as f32, y as f32, z as f32);
 
-            let start = mesh.vertices.len() as u32;
-            mesh.vertices.extend_from_slice(&face.vertices());
-            mesh.indices.extend_from_slice(&face.indices(start));
-            mesh.normals.extend_from_slice(&face.normals());
-            mesh.uvs.extend_from_slice(&face.uvs());
+            let start = vertices.len() as u32;
+            vertices.extend_from_slice(&face.vertices(origin));
+            indices.extend_from_slice(&face.indices(start));
+            normals.extend_from_slice(&face.normals());
+            uvs.extend_from_slice(&face.uvs());
         }
     }
     }
     }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mesh.vertices)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mesh.normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mesh.uvs)
-        .with_inserted_indices(Indices::U32(mesh.indices))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
