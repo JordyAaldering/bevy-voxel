@@ -13,7 +13,6 @@ use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::bevy_egui::prelude::*;
 use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use egui_dock::egui::Key::V;
 
 const CHUNK_WIDTH: usize = 3;
 const CHUNK_HEIGHT: usize = 4;
