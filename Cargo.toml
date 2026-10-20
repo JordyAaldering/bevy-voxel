@@ -5,7 +5,7 @@ edition = "2024"
 
 [[bin]]
 name = "main"
-path = "src/chapter06a.rs"
+path = "src/chapter07.rs"
 
 [profile.dev]
 opt-level = 1

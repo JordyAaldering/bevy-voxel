@@ -173,7 +173,8 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (player_look, player_move).run_if(is_focused),
+            (player_look, player_move)
+                .run_if(is_focused),
         ))
         .run()
 }

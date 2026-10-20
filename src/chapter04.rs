@@ -1,4 +1,5 @@
 use better_default::Default;
+use bevy::gizmos::transform_gizmo::TransformGizmoAxis::Z;
 use bevy::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
@@ -198,6 +199,17 @@ impl Chunk {
             None
         }
     }
+
+    fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, VoxelType)> {
+        (0..CHUNK_WIDTH).flat_map(move |z| {
+            (0..CHUNK_HEIGHT).flat_map(move |y| {
+                (0..CHUNK_WIDTH).map(move |x| {
+                    let idx = Chunk::index(x, y, z);
+                    (x, y, z, self.voxels[idx])
+                })
+            })
+        })
+    }
 }
 
 fn main() -> AppExit {
@@ -216,7 +228,8 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (player_look, player_move).run_if(is_focused),
+            (player_look, player_move)
+                .run_if(is_focused),
         ))
         .run()
 }
@@ -273,12 +286,7 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
     let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
     let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
 
-    for z in 0..CHUNK_WIDTH {
-    for y in 0..CHUNK_HEIGHT {
-    for x in 0..CHUNK_WIDTH {
-        let idx = Chunk::index(x, y, z);
-        let voxel = chunk.voxels[idx];
-
+    for (x, y, z, voxel) in chunk.iter() {
         if voxel.is_transparent() {
             continue;
         }
@@ -308,8 +316,6 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
             normals.extend_from_slice(&face.normals());
             uvs.extend_from_slice(&face.uvs());
         }
-    }
-    }
     }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())

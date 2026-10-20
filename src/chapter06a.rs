@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use better_default::Default;
 use bevy::prelude::*;
 use bevy::{
@@ -72,6 +74,19 @@ fn atlas_uvs(layout: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
         vec2(min.x, min.y), // Top left
         vec2(max.x, min.y), // Top right
     ]
+}
+
+#[derive(Clone, Copy)]
+struct VoxelPosition {
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
+}
+
+impl VoxelPosition {
+    fn index(self) -> usize {
+        self.x + CHUNK_WIDTH * (self.y + CHUNK_HEIGHT * self.z)
+    }
 }
 
 struct Face {
@@ -202,11 +217,9 @@ struct Chunk {
 }
 
 impl Chunk {
-    fn index(x: usize, y: usize, z: usize) -> usize {
-        x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
-    }
+    fn get_neighbor_voxel(&self, pos: VoxelPosition, direction: Direction) -> Option<VoxelType> {
+        let VoxelPosition { x, y, z } = pos;
 
-    fn get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: Direction) -> Option<VoxelType> {
         // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
         // which is definitely greather than the width and height.
         let (x, y, z) = match direction {
@@ -219,11 +232,35 @@ impl Chunk {
         };
 
         if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            let idx = Chunk::index(x, y, z);
-            Some(self.voxels[idx])
+            Some(self[VoxelPosition { x, y, z }])
         } else {
             None
         }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (VoxelPosition, VoxelType)> {
+        (0..CHUNK_WIDTH).flat_map(move |z| {
+            (0..CHUNK_HEIGHT).flat_map(move |y| {
+                (0..CHUNK_WIDTH).map(move |x| {
+                    let pos = VoxelPosition { x, y, z };
+                    (pos, self[pos])
+                })
+            })
+        })
+    }
+}
+
+impl Index<VoxelPosition> for Chunk {
+    type Output = VoxelType;
+
+    fn index(&self, pos: VoxelPosition) -> &Self::Output {
+        &self.voxels[pos.index()]
+    }
+}
+
+impl IndexMut<VoxelPosition> for Chunk {
+    fn index_mut(&mut self, pos: VoxelPosition) -> &mut Self::Output {
+        &mut self.voxels[pos.index()]
     }
 }
 
@@ -274,7 +311,8 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (player_look, player_move).run_if(is_focused),
+            (player_look, player_move)
+                .run_if(is_focused),
         ))
         .run()
 }
@@ -353,11 +391,11 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
         let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
             for z in 0..CHUNK_WIDTH {
-                let idx = Chunk::index(x, y, z);
+                let pos = VoxelPosition { x, y, z };
                 if y == max_y {
-                    chunk.voxels[idx] = VoxelType::Grass;
+                    chunk[pos] = VoxelType::Grass;
                 } else {
-                    chunk.voxels[idx] = VoxelType::Dirt;
+                    chunk[pos] = VoxelType::Dirt;
                 }
             }
         }
@@ -366,18 +404,13 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
     chunk
 }
 
-fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
+fn build_mesh(chunk: &Chunk, chunk_pos: ChunkPosition, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
     let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
     let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
     let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
     let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
 
-    for z in 0..CHUNK_WIDTH {
-    for y in 0..CHUNK_HEIGHT {
-    for x in 0..CHUNK_WIDTH {
-        let idx = Chunk::index(x, y, z);
-        let voxel = chunk.voxels[idx];
-
+    for (voxel_pos, voxel) in chunk.iter() {
         if voxel.is_transparent() {
             continue;
         }
@@ -390,7 +423,7 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld, atlas: &Tex
             Direction::Front,
             Direction::Back,
         ] {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, direction) {
+            if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
                 if !neighbor.is_transparent() {
                     continue;
                 }
@@ -405,8 +438,10 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld, atlas: &Tex
                 };
 
                 if let Some((dx, dz)) = offset &&
-                    let Some(neighbor_chunk) = world.get_chunk_neighbor(pos, dx, dz)
+                    let Some(neighbor_chunk) = world.get_chunk_neighbor(chunk_pos, dx, dz)
                 {
+                    let VoxelPosition { x, y, z } = voxel_pos;
+
                     let (nx, ny, nz) = match direction {
                         Direction::Right => (0, y, z),
                         Direction::Left => (CHUNK_WIDTH - 1, y, z),
@@ -415,8 +450,8 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld, atlas: &Tex
                         _ => unreachable!(),
                     };
 
-                    let idx = Chunk::index(nx, ny, nz);
-                    let neighbor = neighbor_chunk.voxels[idx];
+                    let voxel_pos = VoxelPosition { x: nx, y: ny, z: nz };
+                    let neighbor = neighbor_chunk[voxel_pos];
                     if !neighbor.is_transparent() {
                         continue;
                     }
@@ -425,7 +460,7 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld, atlas: &Tex
 
             let face = Face { direction };
             let texture = voxel.texture(direction);
-            let origin = vec3(x as f32, y as f32, z as f32);
+            let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
 
             let start = vertices.len() as u32;
             vertices.extend_from_slice(&face.vertices(origin));
@@ -433,8 +468,6 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld, atlas: &Tex
             normals.extend_from_slice(&face.normals());
             uvs.extend_from_slice(&atlas_uvs(atlas, texture));
         }
-    }
-    }
     }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())

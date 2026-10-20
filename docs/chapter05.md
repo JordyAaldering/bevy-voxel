@@ -103,3 +103,12 @@ As the project grows, we can extend it with more useful diagnostics without coup
 
 With multiple chunks in place, we now have the basic structure of a voxel world.
 The next challenge is deciding how to generate and manage that world without assuming that every chunk is available at once.
+
+## Refactoring
+
+So far, we've been using a tuple of usize to represent a voxel's local position.
+We can improve this by creating a dedicated struct for the position.
+This improves code clarity, as it makes it clear that we are dealing with a voxel's local chunk index.
+Also, it enables us to implement `Index<VoxelPosition>` and `IndexMut<VoxelPosition>` for `Chunk`, allowing us to access voxels using `chunk[voxel_pos]` instead of `chunk.voxels[voxel_pos.index()]`.
+
+Implement this yourself, and adjust functions where necessary.
