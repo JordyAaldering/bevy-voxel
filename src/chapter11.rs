@@ -342,8 +342,7 @@ fn toggle_cursor(
     }
 
     // Capture only when clicking inside the game view
-    if cursor.grab_mode == CursorGrabMode::None
-        && mouse.just_pressed(MouseButton::Left)
+    if mouse.just_pressed(MouseButton::Left)
         && editor_state.is_game_view_active()
         && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
     {

@@ -262,10 +262,8 @@ fn toggle_cursor(
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     }
-
     // Recapture when a click occurs outside egui
-    if cursor.grab_mode == CursorGrabMode::None
-        && mouse.just_pressed(MouseButton::Left)
+    else if mouse.just_pressed(MouseButton::Left)
         && !egui_context.get_mut().egui_wants_pointer_input()
     {
         cursor.grab_mode = CursorGrabMode::Locked;

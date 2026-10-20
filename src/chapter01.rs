@@ -52,7 +52,7 @@ fn spawn_voxel(
 ) {
     commands.spawn((
         Transform::from_xyz(0.5, 0.5, 0.5),
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        Mesh3d(meshes.add(Cuboid::from_length(1.0))),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
     ));
 }
@@ -67,14 +67,13 @@ fn toggle_cursor(
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     // Release the cursor when escape is pressed
-    if keyboard.just_pressed(KeyCode::Escape) {
+    if keyboard.just_pressed(KeyCode::Escape)
+    {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     }
-
     // Recapture when a click occurs
-    if cursor.grab_mode == CursorGrabMode::None
-        && mouse.just_pressed(MouseButton::Left)
+    else if mouse.just_pressed(MouseButton::Left)
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -98,28 +97,14 @@ fn player_move(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
-    let mut delta = Vec3::ZERO;
-
-    if keyboard.pressed(KeyCode::KeyW) {
-        delta += *camera.forward();
-    }
-    if keyboard.pressed(KeyCode::KeyS) {
-        delta += *camera.back();
-    }
-    if keyboard.pressed(KeyCode::KeyA) {
-        delta += *camera.left();
-    }
-    if keyboard.pressed(KeyCode::KeyD) {
-        delta += *camera.right();
-    }
-    if keyboard.pressed(KeyCode::Space) {
-        delta += Vec3::Y;
-    }
-    if keyboard.pressed(KeyCode::ShiftLeft) {
-        delta -= Vec3::Y;
-    }
+    let delta = Vec3::new(
+        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
+        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
+        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
+    );
 
     if delta != Vec3::ZERO {
-        camera.translation += MOVE_SPEED * time.delta_secs() * delta.normalize();
+        let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
+        camera.translation += MOVE_SPEED * time.delta_secs() * direction.normalize();
     }
 }

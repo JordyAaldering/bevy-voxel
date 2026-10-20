@@ -97,10 +97,8 @@ fn toggle_cursor(
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     }
-
     // Recapture when a click occurs outside egui
-    if cursor.grab_mode == CursorGrabMode::None
-        && mouse.just_pressed(MouseButton::Left)
+    else if mouse.just_pressed(MouseButton::Left)
         && !egui_context.get_mut().egui_wants_pointer_input()
     {
         cursor.grab_mode = CursorGrabMode::Locked;
@@ -123,32 +121,17 @@ fn player_look(
 
 fn player_move(
     time: Res<Time>,
-    settings: Res<CameraSettings>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
-    let mut delta = Vec3::ZERO;
-
-    if keyboard.pressed(KeyCode::KeyW) {
-        delta += *camera.forward();
-    }
-    if keyboard.pressed(KeyCode::KeyS) {
-        delta += *camera.back();
-    }
-    if keyboard.pressed(KeyCode::KeyA) {
-        delta += *camera.left();
-    }
-    if keyboard.pressed(KeyCode::KeyD) {
-        delta += *camera.right();
-    }
-    if keyboard.pressed(KeyCode::Space) {
-        delta += Vec3::Y;
-    }
-    if keyboard.pressed(KeyCode::ShiftLeft) {
-        delta -= Vec3::Y;
-    }
+    let delta = Vec3::new(
+        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
+        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
+        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
+    );
 
     if delta != Vec3::ZERO {
-        camera.translation += settings.move_speed * time.delta_secs() * delta.normalize();
+        let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
+        camera.translation += MOVE_SPEED * time.delta_secs() * direction.normalize();
     }
 }
