@@ -1,3 +1,9 @@
+mod direction;
+
+use crate::{
+    direction::Direction,
+};
+
 use std::mem;
 
 use better_default::Default;
@@ -36,36 +42,6 @@ enum VoxelType {
 impl VoxelType {
     fn is_transparent(&self) -> bool {
         matches!(self, VoxelType::Air)
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Direction {
-    /// Increasing x
-    Right,
-    /// Decreasing x
-    Left,
-    /// Increasing y
-    Top,
-    /// Decreasing y
-    Bottom,
-    /// Increasing z
-    Front,
-    /// Decreasing z
-    Back,
-}
-
-impl Direction {
-    /// Returns an outward-facing normal vector for the face direction.
-    fn normal(&self) -> Vec3 {
-        match self {
-            Self::Right  => Vec3::X,
-            Self::Left   => Vec3::NEG_X,
-            Self::Top    => Vec3::Y,
-            Self::Bottom => Vec3::NEG_Y,
-            Self::Front  => Vec3::Z,
-            Self::Back   => Vec3::NEG_Z,
-        }
     }
 }
 

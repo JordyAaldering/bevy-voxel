@@ -1,6 +1,10 @@
 mod coordinates;
+mod direction;
 
-use crate::coordinates::{ChunkCoord, VoxelCoord, WorldCoord};
+use crate::{
+    coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
+    direction::Direction,
+};
 
 use std::{mem, ops::{Index, IndexMut}};
 
@@ -96,36 +100,6 @@ impl VoxelType {
             },
             Self::Dirt => atlas_index(1, 0),
             _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Direction {
-    /// Increasing x
-    Right,
-    /// Decreasing x
-    Left,
-    /// Increasing y
-    Top,
-    /// Decreasing y
-    Bottom,
-    /// Increasing z
-    Front,
-    /// Decreasing z
-    Back,
-}
-
-impl Direction {
-    /// Returns an outward-facing normal vector for the face direction.
-    fn normal(&self) -> Vec3 {
-        match self {
-            Self::Right  => Vec3::X,
-            Self::Left   => Vec3::NEG_X,
-            Self::Top    => Vec3::Y,
-            Self::Bottom => Vec3::NEG_Y,
-            Self::Front  => Vec3::Z,
-            Self::Back   => Vec3::NEG_Z,
         }
     }
 }
