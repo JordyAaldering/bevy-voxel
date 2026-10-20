@@ -32,6 +32,12 @@ enum VoxelType {
     Grass,
 }
 
+impl VoxelType {
+    fn is_transparent(&self) -> bool {
+        matches!(self, VoxelType::Air)
+    }
+}
+
 struct Face {
     direction: Direction,
 }
@@ -203,7 +209,7 @@ struct ChunkPosition {
 
 impl ChunkPosition {
     /// This chunk's origin in world space.
-    pub fn origin(self) -> Vec3 {
+    fn origin(self) -> Vec3 {
         vec3(
             self.x as f32 * CHUNK_WIDTH as f32,
             0.0,
@@ -327,7 +333,7 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld) -> Mesh {
         let idx = Chunk::index(x, y, z);
         let voxel = chunk.voxels[idx];
 
-        if voxel == VoxelType::Air {
+        if voxel.is_transparent() {
             continue;
         }
 
@@ -340,7 +346,7 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld) -> Mesh {
             Direction::Back,
         ] {
             if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, direction) {
-                if neighbor == VoxelType::Grass {
+                if !neighbor.is_transparent() {
                     continue;
                 }
             } else {
@@ -366,7 +372,7 @@ fn build_mesh(chunk: &Chunk, pos: ChunkPosition, world: &VoxelWorld) -> Mesh {
 
                     let idx = Chunk::index(nx, ny, nz);
                     let neighbor = neighbor_chunk.voxels[idx];
-                    if neighbor == VoxelType::Grass {
+                    if !neighbor.is_transparent() {
                         continue;
                     }
                 }

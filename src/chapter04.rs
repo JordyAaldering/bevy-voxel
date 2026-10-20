@@ -31,6 +31,12 @@ enum VoxelType {
     Grass,
 }
 
+impl VoxelType {
+    fn is_transparent(&self) -> bool {
+        matches!(self, VoxelType::Air)
+    }
+}
+
 struct Face {
     direction: Direction,
 }
@@ -273,7 +279,7 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
         let idx = Chunk::index(x, y, z);
         let voxel = chunk.voxels[idx];
 
-        if voxel == VoxelType::Air {
+        if voxel.is_transparent() {
             continue;
         }
 
@@ -287,7 +293,9 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
         ] {
             // Always render the faces at the chunk boundary.
             // Skip faces that are adjacent to non-air voxels; they won't be visible.
-            if let Some(VoxelType::Grass) = chunk.get_neighbor_voxel(x, y, z, direction) {
+            if chunk.get_neighbor_voxel(x, y, z, direction)
+                .is_some_and(|v| !v.is_transparent())
+            {
                 continue;
             }
 
