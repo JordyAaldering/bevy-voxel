@@ -131,12 +131,12 @@ impl FaceDirection {
     /// Returns an outward-facing normal vector for the face direction.
     fn normal(&self) -> Vec3 {
         match self {
-            Self::Right  => vec3( 1.0, 0.0, 0.0),
-            Self::Left   => vec3(-1.0, 0.0, 0.0),
-            Self::Top    => vec3(0.0,  1.0, 0.0),
-            Self::Bottom => vec3(0.0, -1.0, 0.0),
-            Self::Front  => vec3(0.0, 0.0,  1.0),
-            Self::Back   => vec3(0.0, 0.0, -1.0),
+            Self::Right  => Vec3::X,
+            Self::Left   => Vec3::NEG_X,
+            Self::Top    => Vec3::Y,
+            Self::Bottom => Vec3::NEG_Y,
+            Self::Front  => Vec3::Z,
+            Self::Back   => Vec3::NEG_Z,
         }
     }
 }

@@ -214,7 +214,7 @@ fn spawn_player(
             fov: 70f32.to_radians(),
             ..default()
         }),
-        Transform::from_xyz(1.5, 60.0, 40.0).looking_at(Vec3::new(1.5, 20.0, 1.5), Vec3::Y),
+        Transform::from_xyz(1.5, 60.0, 40.0).looking_at(vec3(1.5, 20.0, 1.5), Vec3::Y),
     ));
 
     // In future we need to ensure to use some configuration to determine the x/y scaling (not relevant here because zero), the scaling, and the offset.

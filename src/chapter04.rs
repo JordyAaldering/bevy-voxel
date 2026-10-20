@@ -233,7 +233,7 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Name::new("Player"),
         Camera3d::default(),
-        Transform::from_xyz(1.5, 2.0, 4.0)
+        Transform::from_xyz(5.0, 6.0, 11.0)
             .looking_at(vec3(0.5, 0.5, 0.5), Vec3::Y),
     ));
 }
@@ -292,7 +292,7 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
             }
 
             let face = Face { direction };
-            let origin = Vec3::new(x as f32, y as f32, z as f32);
+            let origin = vec3(x as f32, y as f32, z as f32);
 
             let start = vertices.len() as u32;
             vertices.extend_from_slice(&face.vertices(origin));
@@ -354,7 +354,7 @@ fn player_move(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
-    let delta = Vec3::new(
+    let delta = vec3(
         f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
         f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
         f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
