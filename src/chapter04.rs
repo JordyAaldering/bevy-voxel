@@ -132,7 +132,7 @@ impl Face {
 
     /// Returns the normals of the 4 corners of the quad.
     fn normals(&self) -> [Vec3; 4] {
-        [self.direction.normal(); 4]
+        [self.direction.vec3(); 4]
     }
 
     /// Returns the UV coordinates of the 4 corners of the quad.
@@ -266,14 +266,7 @@ fn build_mesh(chunk: &Chunk) -> Mesh {
             continue;
         }
 
-        for direction in [
-            Direction::Right,
-            Direction::Left,
-            Direction::Top,
-            Direction::Bottom,
-            Direction::Front,
-            Direction::Back,
-        ] {
+        for direction in Direction::iter() {
             // Always render the faces at the chunk boundary.
             // Skip faces that are adjacent to non-air voxels; they won't be visible.
             if chunk.get_neighbor_voxel(x, y, z, direction)

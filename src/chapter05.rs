@@ -190,7 +190,7 @@ impl MeshData {
 
     /// Returns the normals of the 4 corners of the quad.
     fn add_quad_normals(&mut self, direction: Direction) {
-        self.normals.extend([direction.normal(); 4]);
+        self.normals.extend([direction.vec3(); 4]);
     }
 
     /// Returns the UV coordinates of the 4 corners of the quad.
@@ -324,14 +324,7 @@ fn build_mesh(chunk: &Chunk, pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
             continue;
         }
 
-        for direction in [
-            Direction::Right,
-            Direction::Left,
-            Direction::Top,
-            Direction::Bottom,
-            Direction::Front,
-            Direction::Back,
-        ] {
+        for direction in Direction::iter() {
             if let Some(neighbor) = chunk.get_neighbor_voxel(x, y, z, direction) {
                 if !neighbor.is_transparent() {
                     continue;

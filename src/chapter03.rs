@@ -119,7 +119,7 @@ impl Face {
 
     /// Returns the normals of the 4 corners of the quad.
     fn normals(&self) -> [Vec3; 4] {
-        [self.direction.normal(); 4]
+        [self.direction.vec3(); 4]
     }
 
     /// Returns the UV coordinates of the 4 corners of the quad.
