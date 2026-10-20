@@ -1,0 +1,88 @@
+use super::{CHUNK_WIDTH, CHUNK_HEIGHT};
+
+use bevy::prelude::{Vec3, vec3};
+
+/// Chunk-local voxel coordinate.
+///
+/// x ∈ [0, CHUNK_WIDTH)
+/// y ∈ [0, CHUNK_HEIGHT)
+/// z ∈ [0, CHUNK_WIDTH)
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VoxelCoord {
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
+}
+
+impl VoxelCoord {
+    pub fn new(x: usize, y: usize, z: usize) -> Self {
+        debug_assert!(x < CHUNK_WIDTH);
+        debug_assert!(y < CHUNK_HEIGHT);
+        debug_assert!(z < CHUNK_WIDTH);
+        Self { x, y, z }
+    }
+
+    /// The flattened index of the voxel in the chunk's voxel 1D array.
+    pub fn index(self) -> usize {
+        self.x + CHUNK_WIDTH * (self.y + CHUNK_HEIGHT * self.z)
+    }
+
+    /// Returns the local position of this voxel within its chunk.
+    pub fn local_position(self) -> Vec3 {
+        vec3(self.x as f32, self.y as f32, self.z as f32)
+    }
+}
+
+/// Coordinate of a voxel in global world space.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WorldCoord {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
+
+impl WorldCoord {
+    pub fn new(x: i32, y: i32, z: i32) -> Self {
+        Self { x, y, z }
+    }
+
+    /// Returns the local position of the voxel within its chunk.
+    pub fn local_coord(self) -> VoxelCoord {
+        VoxelCoord {
+            x: self.x.rem_euclid(CHUNK_WIDTH as i32) as usize,
+            y: self.y as usize,
+            z: self.z.rem_euclid(CHUNK_WIDTH as i32) as usize,
+        }
+    }
+
+    /// Returns the coordinate of the chunk that contains this voxel.
+    pub fn chunk_coord(self) -> ChunkCoord {
+        ChunkCoord {
+            x: self.x.div_euclid(CHUNK_WIDTH as i32),
+            z: self.z.div_euclid(CHUNK_WIDTH as i32),
+        }
+    }
+
+    /// Returns the position of this voxel in world space.
+    pub fn position(self) -> Vec3 {
+        vec3(self.x as f32, self.y as f32, self.z as f32)
+    }
+}
+
+/// Coordinate of a chunk in the world.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChunkCoord {
+    pub x: i32,
+    pub z: i32,
+}
+
+impl ChunkCoord {
+    pub fn new(x: i32, z: i32) -> Self {
+        Self { x, z }
+    }
+
+    /// Returns the position of this chunk in world space.
+    pub fn position(self) -> Vec3 {
+        vec3(self.x as f32 * CHUNK_WIDTH as f32, 0.0, self.z as f32 * CHUNK_WIDTH as f32)
+    }
+}

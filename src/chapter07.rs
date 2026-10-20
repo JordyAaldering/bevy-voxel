@@ -1,3 +1,7 @@
+mod coordinates;
+
+use crate::coordinates::{ChunkCoord, VoxelCoord, WorldCoord};
+
 use std::ops::{Index, IndexMut};
 
 use better_default::Default;
@@ -107,19 +111,6 @@ fn atlas_uvs(layout: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
         vec2(min.x, min.y), // Top left
         vec2(max.x, min.y), // Top right
     ]
-}
-
-#[derive(Clone, Copy)]
-struct VoxelPosition {
-    pub x: usize,
-    pub y: usize,
-    pub z: usize,
-}
-
-impl VoxelPosition {
-    fn index(self) -> usize {
-        self.x + CHUNK_WIDTH * (self.y + CHUNK_HEIGHT * self.z)
-    }
 }
 
 struct Face {
@@ -250,8 +241,8 @@ struct Chunk {
 }
 
 impl Chunk {
-    fn get_neighbor_voxel(&self, pos: VoxelPosition, direction: Direction) -> Option<VoxelType> {
-        let VoxelPosition { x, y, z } = pos;
+    fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
+        let VoxelCoord { x, y, z } = pos;
 
         // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
         // which is definitely greather than the width and height.
@@ -265,17 +256,17 @@ impl Chunk {
         };
 
         if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            Some(self[VoxelPosition { x, y, z }])
+            Some(self[VoxelCoord::new(x, y, z)])
         } else {
             None
         }
     }
 
-    fn iter(&self) -> impl Iterator<Item = (VoxelPosition, VoxelType)> {
+    fn iter(&self) -> impl Iterator<Item = (VoxelCoord, VoxelType)> {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {
                 (0..CHUNK_WIDTH).map(move |x| {
-                    let pos = VoxelPosition { x, y, z };
+                    let pos = VoxelCoord::new(x, y, z);
                     (pos, self[pos])
                 })
             })
@@ -283,85 +274,46 @@ impl Chunk {
     }
 }
 
-impl Index<VoxelPosition> for Chunk {
+impl Index<VoxelCoord> for Chunk {
     type Output = VoxelType;
 
-    fn index(&self, pos: VoxelPosition) -> &Self::Output {
+    fn index(&self, pos: VoxelCoord) -> &Self::Output {
         &self.voxels[pos.index()]
     }
 }
 
-impl IndexMut<VoxelPosition> for Chunk {
-    fn index_mut(&mut self, pos: VoxelPosition) -> &mut Self::Output {
+impl IndexMut<VoxelCoord> for Chunk {
+    fn index_mut(&mut self, pos: VoxelCoord) -> &mut Self::Output {
         &mut self.voxels[pos.index()]
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct ChunkPosition {
-    x: i32,
-    z: i32,
-}
-
-impl ChunkPosition {
-    /// This chunk's origin in world space.
-    fn origin(self) -> Vec3 {
-        vec3(
-            self.x as f32 * CHUNK_WIDTH as f32,
-            0.0,
-            self.z as f32 * CHUNK_WIDTH as f32,
-        )
     }
 }
 
 #[derive(Default, Resource)]
 struct VoxelWorld {
-    chunks: HashMap<ChunkPosition, Chunk>,
+    chunks: HashMap<ChunkCoord, Chunk>,
 }
 
 impl VoxelWorld {
-    pub fn is_solid(&self, pos: WorldPosition) -> bool {
+    fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
             .is_some_and(|voxel| voxel.is_solid())
     }
 
-    pub fn get_voxel(&self, pos: WorldPosition) -> Option<VoxelType> {
+    fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
         if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
             return None;
         }
 
-        let chunk_pos = pos.to_chunk_position();
+        let chunk_pos = pos.chunk_coord();
         self.chunks.get(&chunk_pos).map(|chunk| {
-            let voxel_pos = pos.to_voxel_position();
+            let voxel_pos = pos.local_coord();
             chunk[voxel_pos]
         })
     }
 
-    fn get_chunk_neighbor(&self, pos: ChunkPosition, dx: i32, dz: i32) -> Option<&Chunk> {
-        let neighbor_pos = ChunkPosition { x: pos.x + dx, z: pos.z + dz };
+    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&Chunk> {
+        let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
         self.chunks.get(&neighbor_pos)
-    }
-}
-
-#[derive(Clone, Copy)]
-struct WorldPosition {
-    x: i32,
-    y: i32,
-    z: i32,
-}
-
-impl WorldPosition {
-    fn to_voxel_position(self) -> VoxelPosition {
-        let local_x = self.x.rem_euclid(CHUNK_WIDTH as i32) as usize;
-        let local_y = self.y as usize;
-        let local_z = self.z.rem_euclid(CHUNK_WIDTH as i32) as usize;
-        VoxelPosition { x: local_x, y: local_y, z: local_z }
-    }
-
-    fn to_chunk_position(self) -> ChunkPosition {
-        let chunk_x = self.x.div_euclid(CHUNK_WIDTH as i32);
-        let chunk_z = self.z.div_euclid(CHUNK_WIDTH as i32);
-        ChunkPosition { x: chunk_x, z: chunk_z }
     }
 }
 
@@ -457,14 +409,14 @@ fn spawn_world(
     for z in -1..=1 {
         for x in -1..=1 {
             let chunk = generate_chunk(x, z);
-            world.chunks.insert(ChunkPosition { x, z }, chunk);
+            world.chunks.insert(ChunkCoord::new(x, z), chunk);
         }
     }
 
     // Now we can generate the meshes
     for (&chunk_pos, chunk) in &world.chunks {
         commands.spawn((
-            Transform::from_translation(chunk_pos.origin()),
+            Transform::from_translation(chunk_pos.position()),
             Mesh3d(meshes.add(build_mesh(chunk, chunk_pos, &world, layout))),
             MeshMaterial3d(material.clone()),
         ));
@@ -478,7 +430,7 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
         let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
             for z in 0..CHUNK_WIDTH {
-                let pos = VoxelPosition { x, y, z };
+                let pos = VoxelCoord::new(x, y, z);
                 if y == max_y {
                     chunk[pos] = VoxelType::Grass;
                 } else {
@@ -491,7 +443,7 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
     chunk
 }
 
-fn build_mesh(chunk: &Chunk, chunk_pos: ChunkPosition, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
+fn build_mesh(chunk: &Chunk, chunk_pos: ChunkCoord, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
     let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
     let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
     let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
@@ -527,7 +479,7 @@ fn build_mesh(chunk: &Chunk, chunk_pos: ChunkPosition, world: &VoxelWorld, atlas
                 if let Some((dx, dz)) = offset &&
                     let Some(neighbor_chunk) = world.get_chunk_neighbor(chunk_pos, dx, dz)
                 {
-                    let VoxelPosition { x, y, z } = voxel_pos;
+                    let VoxelCoord { x, y, z } = voxel_pos;
 
                     let (nx, ny, nz) = match direction {
                         Direction::Right => (0, y, z),
@@ -537,7 +489,7 @@ fn build_mesh(chunk: &Chunk, chunk_pos: ChunkPosition, world: &VoxelWorld, atlas
                         _ => unreachable!(),
                     };
 
-                    let voxel_pos = VoxelPosition { x: nx, y: ny, z: nz };
+                    let voxel_pos = VoxelCoord::new(nx, ny, nz);
                     let neighbor = neighbor_chunk[voxel_pos];
                     if !neighbor.is_transparent() {
                         continue;
@@ -720,7 +672,7 @@ fn move_y(
 
         for x in min_x..=max_x {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition { x, y, z }) {
+                if world.is_solid(WorldCoord::new(x, y, z)) {
                     position.y = y as f32 + 1.0;
                     player.velocity.y = 0.0;
                     player.grounded = true;
@@ -735,7 +687,7 @@ fn move_y(
 
         for x in min_x..=max_x {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition { x, y, z }) {
+                if world.is_solid(WorldCoord::new(x, y, z)) {
                     position.y = y as f32 - PLAYER_HEIGHT;
                     player.velocity.y = 0.0;
                     return;
@@ -768,7 +720,7 @@ fn move_x(
 
         for y in min_y..=max_y {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition { x, y, z }) {
+                if world.is_solid(WorldCoord::new(x, y, z)) {
                     position.x = x as f32 - PLAYER_WIDTH_HALF;
                     player.velocity.x = 0.0;
                     return;
@@ -781,7 +733,7 @@ fn move_x(
 
         for y in min_y..=max_y {
             for z in min_z..=max_z {
-                if world.is_solid(WorldPosition { x, y, z }) {
+                if world.is_solid(WorldCoord::new(x, y, z)) {
                     position.x = x as f32 + 1.0 + PLAYER_WIDTH_HALF;
                     player.velocity.x = 0.0;
                     return;
@@ -814,7 +766,7 @@ fn move_z(
 
         for x in min_x..=max_x {
             for y in min_y..=max_y {
-                if world.is_solid(WorldPosition { x, y, z }) {
+                if world.is_solid(WorldCoord::new(x, y, z)) {
                     // Put the player's front edge against the voxel
                     position.z = z as f32 - PLAYER_WIDTH_HALF;
                     player.velocity.z = 0.0;
@@ -828,7 +780,7 @@ fn move_z(
 
         for x in min_x..=max_x {
             for y in min_y..=max_y {
-                if world.is_solid(WorldPosition { x, y, z }) {
+                if world.is_solid(WorldCoord::new(x, y, z)) {
                     // Put the player's back edge against the voxel
                     position.z = z as f32 + 1.0 + PLAYER_WIDTH_HALF;
                     player.velocity.z = 0.0;
