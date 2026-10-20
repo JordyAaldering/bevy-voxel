@@ -61,7 +61,7 @@ fn main() {
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_plugins(EguiPlugin::default())
-        .add_plugins(WorldInspectorPlugin::new())
+        .add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ResourceInspectorPlugin::<CameraSettings>::default())
         .add_systems(Startup, (
             spawn_global_illumination,

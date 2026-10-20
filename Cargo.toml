@@ -5,7 +5,7 @@ edition = "2024"
 
 [[bin]]
 name = "main"
-path = "src/chapter01.rs"
+path = "src/chapter02.rs"
 
 [profile.dev]
 opt-level = 1
@@ -15,6 +15,7 @@ opt-level = 3
 
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
+better_default = "1.0.5"
 bevy = { version = "0.20.0", features = ["dynamic_linking", "pan_orbit_camera"] }
 bevy-inspector-egui = { git = "https://github.com/taboky-dev/bevy-inspector-egui.git", rev = "9a5b086" }
 egui_dock = "0.21.1"

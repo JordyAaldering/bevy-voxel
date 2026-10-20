@@ -7,6 +7,7 @@ There is a lot of satisfaction in truly understanding how something works, and b
 This guide follows the same approach.
 The goal is not simply to make a voxel game, but to understand the concepts behind it and learn how to figure things out yourself.
 If you just want a voxel engine, use something like [bevy-voxel-world](https://crates.io/crates/bevy_voxel_world) instead.
+If you are willing to go on a bunch of tangents of stuff I thought was interesting, then stick around.
 
 These are deliberately named *chapters*, and not *tutorials*.
 I want to teach you how to do things yourself, rather than give you a copy-pasteable solution.

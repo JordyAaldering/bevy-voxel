@@ -9,7 +9,9 @@ const MOUSE_SENSITIVITY: f32 = 0.001;
 
 fn main() -> AppExit {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins((
+            DefaultPlugins,
+        ))
         .add_systems(Startup, (
             spawn_global_illumination,
             spawn_camera,
@@ -67,14 +69,12 @@ fn toggle_cursor(
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     // Release the cursor when escape is pressed
-    if keyboard.just_pressed(KeyCode::Escape)
-    {
+    if keyboard.just_pressed(KeyCode::Escape) {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     }
     // Recapture when a click occurs
-    else if mouse.just_pressed(MouseButton::Left)
-    {
+    else if mouse.just_pressed(MouseButton::Left) {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }

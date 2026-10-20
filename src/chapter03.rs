@@ -1,3 +1,4 @@
+use better_default::Default;
 use bevy::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
@@ -7,24 +8,18 @@ use bevy::{
 };
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::bevy_egui::prelude::*;
-use bevy_inspector_egui::quick::{ResourceInspectorPlugin, WorldInspectorPlugin};
+use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
-#[derive(Resource, Reflect, InspectorOptions)]
+#[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
 struct CameraSettings {
+    #[default(5.0)]
     #[inspector(min = 0.1, max = 20.0)]
     move_speed: f32,
+    #[default(0.0025)]
     #[inspector(min = 0.0001, max = 0.01)]
     mouse_sensitivity: f32,
-}
-
-impl Default for CameraSettings {
-    fn default() -> Self {
-        Self {
-            move_speed: 5.0,
-            mouse_sensitivity: 0.0025,
-        }
-    }
 }
 
 struct Voxel {
@@ -187,8 +182,7 @@ fn main() -> AppExit {
         .add_plugins((
             DefaultPlugins,
             EguiPlugin::default(),
-            WorldInspectorPlugin::new(),
-            ResourceInspectorPlugin::<CameraSettings>::default(),
+            WorldInspectorPlugin::default(),
         ))
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
@@ -277,8 +271,8 @@ fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
+    egui_wants_input: Res<EguiWantsInput>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
-    mut egui_context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
 ) {
     // Release the cursor when escape is pressed
     if keyboard.just_pressed(KeyCode::Escape) {
@@ -287,7 +281,7 @@ fn toggle_cursor(
     }
     // Recapture when a click occurs outside egui
     else if mouse.just_pressed(MouseButton::Left)
-        && !egui_context.get_mut().egui_wants_pointer_input()
+        && !egui_wants_input.wants_pointer_input()
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -309,6 +303,7 @@ fn player_look(
 
 fn player_move(
     time: Res<Time>,
+    settings: Res<CameraSettings>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
 ) {
@@ -320,6 +315,6 @@ fn player_move(
 
     if delta != Vec3::ZERO {
         let direction = delta.x * camera.right() + delta.y * Vec3::Y + delta.z * camera.forward();
-        camera.translation += MOVE_SPEED * time.delta_secs() * direction.normalize();
+        camera.translation += settings.move_speed * time.delta_secs() * direction.normalize();
     }
 }
