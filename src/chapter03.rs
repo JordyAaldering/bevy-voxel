@@ -29,10 +29,6 @@ struct Voxel {
 }
 
 impl Voxel {
-    fn new(x: usize, y: usize, z: usize) -> Self {
-        Self { x, y, z }
-    }
-
     fn origin(&self) -> Vec3 {
         vec3(self.x as f32, self.y as f32, self.z as f32)
     }
@@ -167,12 +163,12 @@ impl Direction {
     /// Returns an outward-facing normal vector for the face direction.
     fn normal(&self) -> Vec3 {
         match self {
-            Self::Right  => vec3( 1.0, 0.0, 0.0),
-            Self::Left   => vec3(-1.0, 0.0, 0.0),
-            Self::Top    => vec3(0.0,  1.0, 0.0),
-            Self::Bottom => vec3(0.0, -1.0, 0.0),
-            Self::Front  => vec3(0.0, 0.0,  1.0),
-            Self::Back   => vec3(0.0, 0.0, -1.0),
+            Self::Right  => Vec3::X,
+            Self::Left   => Vec3::NEG_X,
+            Self::Top    => Vec3::Y,
+            Self::Bottom => Vec3::NEG_Y,
+            Self::Front  => Vec3::Z,
+            Self::Back   => Vec3::NEG_Z,
         }
     }
 }
@@ -226,15 +222,15 @@ fn spawn_voxel(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let voxel = Voxel::new(0, 0, 0);
+    let voxel = Voxel { x: 0, y: 0, z: 0 };
     commands.spawn((
         Transform::from_translation(voxel.origin()),
-        Mesh3d(meshes.add(generate_voxel_mesh(&voxel))),
+        Mesh3d(meshes.add(build_mesh(&voxel))),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
     ));
 }
 
-fn generate_voxel_mesh(voxel: &Voxel) -> Mesh {
+fn build_mesh(voxel: &Voxel) -> Mesh {
     let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
     let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
     let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
