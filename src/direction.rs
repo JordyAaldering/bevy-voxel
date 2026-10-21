@@ -1,4 +1,4 @@
-use bevy::prelude::Vec3;
+use bevy::math::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {

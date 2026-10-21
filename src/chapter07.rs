@@ -1,7 +1,9 @@
+mod axis;
 mod coordinates;
 mod direction;
 
 use crate::{
+    axis::Axis,
     coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
     direction::Direction,
 };
@@ -597,18 +599,17 @@ fn move_survival(
 ) {
     let (mut player, transform) = player.into_inner();
 
-    let delta = vec3(
-        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
-        0.0,
-        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
-    );
+    let dx = f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA));
+    let dz = f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS));
 
-    if delta != Vec3::ZERO {
-        let movement = delta.x * transform.right() + delta.z * transform.forward();
+    if dx != 0.0 || dz != 0.0 {
+        let movement = dx * transform.right() + dz * transform.forward();
         let movement = movement.normalize_or_zero();
-
         player.velocity.x = movement.x * settings.move_speed;
         player.velocity.z = movement.z * settings.move_speed;
+    } else {
+        player.velocity.x = 0.0;
+        player.velocity.z = 0.0;
     }
 
     if player.grounded && keyboard.just_pressed(KeyCode::Space) {
@@ -623,152 +624,96 @@ fn player_physics(
     player: Single<(&mut Player, &mut Transform)>,
 ) {
     let (mut player, mut transform) = player.into_inner();
+    let dt = time.delta_secs();
 
-    player.velocity.y -= GRAVITY * time.delta_secs();
+    player.velocity.y -= GRAVITY * dt;
     player.grounded = false;
 
-    move_x(&mut player, &mut transform.translation, &world, time.delta_secs());
-    move_y(&mut player, &mut transform.translation, &world, time.delta_secs());
-    move_z(&mut player, &mut transform.translation, &world, time.delta_secs());
+    for axis in [Axis::X, Axis::Y, Axis::Z] {
+        move_axis(
+            &mut player,
+            &mut transform.translation,
+            &world,
+            dt,
+            axis,
+        );
+    }
 }
 
-fn move_y(
+fn move_axis(
     player: &mut Player,
     position: &mut Vec3,
     world: &VoxelWorld,
     dt: f32,
+    axis: Axis,
 ) {
-    if player.velocity.y == 0.0 {
+    let velocity = Axis::get(axis, player.velocity);
+
+    if velocity == 0.0 {
         return;
     }
 
-    position.y += player.velocity.y * dt;
+    let axis_position = Axis::get(axis, *position) + velocity * dt;
+    Axis::set(axis, position, axis_position);
 
-    let min_x = (position.x - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_x = (position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
-    let min_z = (position.z - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_z = (position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
+    let min = Vec3::new(
+        position.x - PLAYER_WIDTH_HALF,
+        position.y,
+        position.z - PLAYER_WIDTH_HALF,
+    );
+    let max = Vec3::new(
+        position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+        position.y + PLAYER_HEIGHT - COLLISION_EPSILON,
+        position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+    );
 
-    if player.velocity.y < 0.0 {
-        // Falling
-        let y = position.y.floor() as i32;
+    let min_x = min.x.floor() as i32;
+    let max_x = max.x.floor() as i32;
+    let min_y = min.y.floor() as i32;
+    let max_y = max.y.floor() as i32;
+    let min_z = min.z.floor() as i32;
+    let max_z = max.z.floor() as i32;
 
-        for x in min_x..=max_x {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldCoord::new(x, y, z)) {
-                    position.y = y as f32 + 1.0;
-                    player.velocity.y = 0.0;
-                    player.grounded = true;
-                    return;
+    // Find the voxel coordinate of the leading face
+    let edge = match (axis, velocity > 0.0) {
+        (Axis::X, true)  => position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+        (Axis::X, false) => position.x - PLAYER_WIDTH_HALF,
+        (Axis::Y, true)  => position.y + PLAYER_HEIGHT - COLLISION_EPSILON,
+        (Axis::Y, false) => position.y,
+        (Axis::Z, true)  => position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+        (Axis::Z, false) => position.z - PLAYER_WIDTH_HALF,
+    };
+
+    let edge = edge.floor() as i32;
+
+    let (x_range, y_range, z_range) = match axis {
+        Axis::X => (edge..=edge,   min_y..=max_y, min_z..=max_z),
+        Axis::Y => (min_x..=max_x, edge..=edge,   min_z..=max_z),
+        Axis::Z => (min_x..=max_x, min_y..=max_y, edge..=edge),
+    };
+
+    for z in z_range {
+        for y in y_range.clone() {
+            for x in x_range.clone() {
+                if !world.is_solid(WorldCoord::new(x, y, z)) {
+                    continue;
                 }
-            }
-        }
-    } else {
-        // Jumping
-        let top = position.y + PLAYER_HEIGHT;
-        let y = (top - COLLISION_EPSILON).floor() as i32;
 
-        for x in min_x..=max_x {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldCoord::new(x, y, z)) {
-                    position.y = y as f32 - PLAYER_HEIGHT;
-                    player.velocity.y = 0.0;
-                    return;
-                }
-            }
-        }
-    }
-}
+                let resolved = match (axis, velocity > 0.0) {
+                    (Axis::X, true)  => x as f32 - PLAYER_WIDTH_HALF,
+                    (Axis::X, false) => x as f32 + 1.0 + PLAYER_WIDTH_HALF,
+                    (Axis::Y, true)  => y as f32 - PLAYER_HEIGHT,
+                    (Axis::Y, false) => {
+                        player.grounded = true;
+                        y as f32 + 1.0
+                    }
+                    (Axis::Z, true)  => z as f32 - PLAYER_WIDTH_HALF,
+                    (Axis::Z, false) => z as f32 + 1.0 + PLAYER_WIDTH_HALF,
+                };
 
-fn move_x(
-    player: &mut Player,
-    position: &mut Vec3,
-    world: &VoxelWorld,
-    dt: f32
-) {
-    if player.velocity.x == 0.0 {
-        return;
-    }
-
-    position.x += player.velocity.x * dt;
-
-    let min_y = position.y.floor() as i32;
-    let max_y = (position.y + PLAYER_HEIGHT - COLLISION_EPSILON).floor() as i32;
-    let min_z = (position.z - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_z = (position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
-
-    if player.velocity.x > 0.0 {
-        let right = position.x + PLAYER_WIDTH_HALF;
-        let x = (right - COLLISION_EPSILON).floor() as i32;
-
-        for y in min_y..=max_y {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldCoord::new(x, y, z)) {
-                    position.x = x as f32 - PLAYER_WIDTH_HALF;
-                    player.velocity.x = 0.0;
-                    return;
-                }
-            }
-        }
-    } else {
-        let left = position.x - PLAYER_WIDTH_HALF;
-        let x = left.floor() as i32;
-
-        for y in min_y..=max_y {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldCoord::new(x, y, z)) {
-                    position.x = x as f32 + 1.0 + PLAYER_WIDTH_HALF;
-                    player.velocity.x = 0.0;
-                    return;
-                }
-            }
-        }
-    }
-}
-
-fn move_z(
-    player: &mut Player,
-    position: &mut Vec3,
-    world: &VoxelWorld,
-    dt: f32
-) {
-    if player.velocity.z == 0.0 {
-        return;
-    }
-
-    position.z += player.velocity.z * dt;
-
-    let min_x = (position.x - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_x = (position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
-    let min_y = position.y.floor() as i32;
-    let max_y = (position.y + PLAYER_HEIGHT - COLLISION_EPSILON).floor() as i32;
-
-    if player.velocity.z > 0.0 {
-        let front = position.z + PLAYER_WIDTH_HALF;
-        let z = (front - COLLISION_EPSILON).floor() as i32;
-
-        for x in min_x..=max_x {
-            for y in min_y..=max_y {
-                if world.is_solid(WorldCoord::new(x, y, z)) {
-                    // Put the player's front edge against the voxel
-                    position.z = z as f32 - PLAYER_WIDTH_HALF;
-                    player.velocity.z = 0.0;
-                    return;
-                }
-            }
-        }
-    } else {
-        let back = position.z - PLAYER_WIDTH_HALF;
-        let z = back.floor() as i32;
-
-        for x in min_x..=max_x {
-            for y in min_y..=max_y {
-                if world.is_solid(WorldCoord::new(x, y, z)) {
-                    // Put the player's back edge against the voxel
-                    position.z = z as f32 + 1.0 + PLAYER_WIDTH_HALF;
-                    player.velocity.z = 0.0;
-                    return;
-                }
+                Axis::set(axis, position, resolved);
+                Axis::set(axis, &mut player.velocity, 0.0);
+                return;
             }
         }
     }

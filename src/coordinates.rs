@@ -1,6 +1,6 @@
 use super::{CHUNK_WIDTH, CHUNK_HEIGHT};
 
-use bevy::prelude::{Vec3, vec3};
+use bevy::math::{Vec3, vec3};
 
 /// Chunk-local voxel coordinate.
 ///
