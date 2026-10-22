@@ -109,7 +109,7 @@ UV coordinates associate each vertex with a position in a 2D texture.
          | Stone | Dirt  |
          |       |       |
 (0, 0.5) |———————+———————| (1, 0.5)
-         | Sand  | Wood  |
+         | Wood  | Log   |
          |       |       |
   (0, 1) +———————————————+ (1, 1)
 ```
