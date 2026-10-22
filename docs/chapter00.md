@@ -5,7 +5,9 @@
 There's no shortage of voxel tutorials, so why write another one?
 Because I don't want this to be just a recipe to follow.
 It's easy to copy someone else's code and get the same result, but that doesn't necessarily teach you how to build or adapt it yourself.
-As [b3agz puts it](https://youtu.be/g0V1JM9P4z8), there's a difference between showing _someone_ how to do something and _teaching_ them how to do it.
+If you've tried making a voxel game before, you might have come across the tutorials by _b3agz_.
+I mention him because he describes very well the problem of many tutorials ([_This Channel is Dead_](https://youtu.be/g0V1JM9P4z8)).
+There's a difference between _showing_ someone how to do something and _teaching_ them how to do it.
 I want these guides to do the latter: explain the ideas behind the code, help you understand the choices we're making, and give you room to work things out for yourself.
 The goal is for you to leave with the skills to keep building, not with a project that only works as long as I keep writing and you keep following along.
 I deliberately won't provide complete code snippets.
