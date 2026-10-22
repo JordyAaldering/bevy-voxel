@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+
 use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, direction::Direction};
 
 use bevy::math::{Vec3, vec3};

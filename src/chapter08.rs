@@ -123,9 +123,6 @@ struct Chunk {
 #[derive(Component)]
 struct NeedsRemesh;
 
-#[derive(Component)]
-struct NeedsDespawn;
-
 struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
@@ -141,7 +138,7 @@ impl ChunkData {
         }
     }
 
-    fn build_mesh(&mut self, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
+    fn build_mesh(&self, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
         let mut mesh_data = MeshData::new(atlas);
 
         for (voxel_pos, voxel) in self.iter()
@@ -270,7 +267,7 @@ impl<'a> MeshData<'a> {
     fn add_quad(&mut self, direction: Direction, origin: Vec3, texture: usize) {
         let start = self.vertices.len() as u32;
         self.add_quad_indices(start);
-        self.add_quad_vertices(direction, origin);
+        self.vertices.extend(Self::quad_vertices(direction, origin));
         self.add_quad_normals(direction);
         self.add_quad_uvs(texture);
     }
@@ -316,8 +313,8 @@ impl<'a> MeshData<'a> {
     /// ```
     ///
     /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
-    fn add_quad_vertices(&mut self, direction: Direction, o: Vec3) {
-        self.vertices.extend(match direction {
+    fn quad_vertices(direction: Direction, o: Vec3) -> [Vec3; 4] {
+        match direction {
             Direction::Right => [
                 o + Vec3::X + Vec3::Z,
                 o + Vec3::X,
@@ -354,7 +351,7 @@ impl<'a> MeshData<'a> {
                 o + Vec3::X + Vec3::Y,
                 o + Vec3::Y,
             ],
-        });
+        }
     }
 
     /// Returns the normals of the 4 corners of the quad.
@@ -389,6 +386,9 @@ impl<'a> MeshData<'a> {
 struct VoxelWorld {
     chunks: HashMap<ChunkCoord, ChunkData>,
 }
+
+#[derive(Resource)]
+struct VoxelAtlas(TextureAtlasLayout);
 
 impl VoxelWorld {
     fn is_solid(&self, pos: WorldCoord) -> bool {
@@ -481,10 +481,6 @@ impl VoxelWorld {
         let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
         self.chunks.get(&neighbor_pos)
     }
-
-    fn is_loaded(&self, coord: ChunkCoord) -> bool {
-        self.chunks.get(&coord).is_some_and(|chunk| chunk.entity.is_some())
-    }
 }
 
 fn main() -> AppExit {
@@ -554,20 +550,17 @@ fn spawn_player(mut commands: Commands) {
 
 fn spawn_world(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut world: ResMut<VoxelWorld>,
     asset_server: Res<AssetServer>,
 ) {
-    let layout = layouts.add(TextureAtlasLayout::from_grid(
+    commands.insert_resource(VoxelAtlas(TextureAtlasLayout::from_grid(
         UVec2::splat(ATLAS_SIZE),
         ATLAS_COLUMNS,
         ATLAS_ROWS,
         None,
         None,
-    ));
-    let layout = layouts.get(&layout).unwrap();
+    )));
 
     let texture = asset_server.load("blocks.png");
 
@@ -611,6 +604,7 @@ fn generate_chunk(chunk: &mut ChunkData) {
 fn remesh_chunks(
     mut commands: Commands,
     world: Res<VoxelWorld>,
+    atlas: Res<VoxelAtlas>,
     mut meshes: ResMut<Assets<Mesh>>,
     chunks: Query<(Entity, &Chunk, Option<&Mesh3d>), With<NeedsRemesh>>,
 ) {
@@ -619,7 +613,7 @@ fn remesh_chunks(
             continue;
         };
 
-        let mesh = data.build_mesh(&world);
+        let mesh = data.build_mesh(&world, &atlas.0);
 
         match mesh3d {
             Some(handle) => {
@@ -630,21 +624,6 @@ fn remesh_chunks(
             }
         }
         commands.entity(entity).remove::<NeedsRemesh>();
-    }
-}
-
-fn despawn_retired_chunks(
-    mut commands: Commands,
-    mut world: ResMut<VoxelWorld>,
-    retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
-) {
-    for (entity, chunk) in &retired_chunks {
-        log::info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
-        // Keep the voxel data; only the entity goes away
-        if let Some(data) = world.chunks.get_mut(&chunk.coord) {
-            data.clear_entity();
-        }
-        commands.entity(entity).despawn();
     }
 }
 
@@ -880,8 +859,7 @@ fn draw_selected_voxel(
     };
 
     let origin = hit.coord.position();
-    let face = Face::new(origin, hit.direction);
-    let vertices = face.vertices();
+    let vertices = MeshData::quad_vertices(hit.direction, origin);
 
     gizmos.line(vertices[0], vertices[1], Color::WHITE);
     gizmos.line(vertices[1], vertices[3], Color::WHITE);
