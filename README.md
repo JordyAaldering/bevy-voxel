@@ -2,6 +2,8 @@
 
 # Learn to build a voxel game with Rust & Bevy
 
+![](docs/img/screenshot.png)
+
 There's no shortage of voxel tutorials, so why write another one?
 Because I don't want this to be just a recipe to follow.
 It's easy to copy someone else's code and get the same result, but that doesn't necessarily teach you how to build or adapt it yourself.
