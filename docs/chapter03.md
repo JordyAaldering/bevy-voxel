@@ -66,7 +66,7 @@ A square has four corners, but because we can only make triangles, we need to sp
 However, these two triangles share two vertices, meaning we only need four vertices.
 In the previous example, that would mean adding a fourth vertex $v_3 = (1, 1)$ and extending the indices to `[0, 2, 1, 1, 2, 3]`.
 
-## Winding order
+### Winding order
 
 The order in which we create a triangle matters.
 In the previous example, we created a triangle in a clockwise order.
@@ -81,68 +81,45 @@ By default, Bevy uses a [counter-clockwise](https://docs.rs/bevy/latest/bevy/mes
 That means the example from before would be invisible, because the triangle is facing the wrong way.
 Instead, we should create the square from the indices `[0, 1, 2, 2, 1, 3]`.
 
----
+### Combining faces into a cube
 
-## Surface normals
+To create a cube, we need to combine six square faces.
+Just like how we reused two vertices for making a face, you might think we can also reuse each vertex across its three adjacent faces.
+However, a vertex contains more data than just its position.
+Another attribute that is relevant now are _normals_.
 
-Winding order determines the front of a triangle, but it doesn't fully describe how the surface should respond to light.
-For that, we need **normals**.
+The normal of a vertex is a vector that points perpendicular to the surface of the mesh at that vertex.
+It describes which way the surface is facing, which is used for lighting calculations to determine how light interacts with the surface.
 
-A normal is a vector perpendicular to a surface.
-For a flat face of a cube, the normal points directly outward.
+In the case of a cube, each normal points along one of the axes.
+That is, the four normals of the right face point along positive x: $(1, 0, 0)$.
+If we were to use the same vertex for three adjacent faces, averaging the normals, the normal would point diagonally outward, resulting in a smooth shading across the cube's edges.
+To avoid this, we have to give each face its own set of normals, which gives the cube its sharp edges.
 
-Each of the cube's six faces has a normal pointing along one of the coordinate axes.
-The front and back faces point along positive and negative Z.
-Together, these six directions give us the normals for the cube.
+### Texture coordinates
 
-Normals are used by lighting calculations to determine how light interacts with a surface.
-A surface facing toward a light generally receives more direct illumination than one facing away from it.
+For the same reason we want to bundle our meshes together, we typically also want to combine multiple textures into a single image.
 
-For a flat-shaded cube, all four vertices of a face have the same normal.
-Adjacent faces have different normals, which gives the cube its sharp edges.
-
-Why store normals per vertex if they describe a surface? Because a vertex contains a complete set of attributes, and the renderer interpolates those attributes across triangles.
-Giving neighbouring faces separate vertices lets each face have its own normal, even when their vertices occupy the same position in space.
-
-For a smooth surface, normals can instead vary across the mesh.
-A sphere, for example, often uses normals pointing approximately outward from its centre.
-This makes lighting appear smooth even though the geometry consists of flat triangles.
-
-The geometry determines the shape; normals influence how that shape is shaded.
-
-## Texture coordinates
-
-A mesh can have correct geometry and lighting and still need information about how an image should cover its surface.
-This is where **UV coordinates** come in.
+![](../assets/blocks.png)
 
 UV coordinates associate each vertex with a position in a 2D texture.
-They are usually represented by two values, conventionally called U and V.
 
 ```text
-(0, 0) +---------+ (1, 0)
-       |         |
-       | texture |
-       |         |
-(0, 1) +---------+ (1, 1)
+  (0, 0) +———————————————+ (1, 0)
+         | Stone | Dirt  |
+         |       |       |
+(0, 0.5) |———————+———————| (1, 0.5)
+         | Sand  | Wood  |
+         |       |       |
+  (0, 1) +———————————————+ (1, 1)
 ```
 
-These coordinates are independent of the mesh's 3D positions.
-A vertex at `(0, 1, 0)` could use the UV coordinate `(0.5, 0.5)`, for example.
-The first describes where the vertex is in 3D space; the second describes which point of the texture maps to it.
+### Putting it all together
 
-In our cube, each face uses the entire texture.
-Its four vertices map to the four corners of the UV square.
-The renderer interpolates those coordinates across the triangles and samples the texture accordingly.
+Our voxel has six faces, each consisting of two triangles.
+This gives our voxel a total of $6 \times 4 = 24$ vertices, $6 \times 2 \times 3 = 36$ indices, $6 \times 4 = 24$ normals, and $6 \times 4 = 24$ UV coordinates.
 
-The order matters here, too.
-UV coordinates must correspond to the same vertices as the positions.
-If you assign them in a different order, the texture may appear flipped, rotated, or stretched.
-
-UV mapping works for arbitrary geometry, not just cubes.
-A character model, for example, can use a carefully arranged UV layout to map different parts of its surface onto an image.
-
-We'll explore more advanced texture mapping later.
-For now, the important distinction is that UV coordinates describe how a texture maps onto a mesh, not the shape of the mesh itself.
+---
 
 ## Building the mesh
 
