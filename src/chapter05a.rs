@@ -48,11 +48,11 @@ impl VoxelType {
     }
 }
 
-struct Chunk {
+struct ChunkData {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
-impl Chunk {
+impl ChunkData {
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
         let VoxelCoord { x, y, z } = pos;
 
@@ -86,7 +86,7 @@ impl Chunk {
     }
 }
 
-impl Index<VoxelCoord> for Chunk {
+impl Index<VoxelCoord> for ChunkData {
     type Output = VoxelType;
 
     fn index(&self, pos: VoxelCoord) -> &Self::Output {
@@ -94,7 +94,7 @@ impl Index<VoxelCoord> for Chunk {
     }
 }
 
-impl IndexMut<VoxelCoord> for Chunk {
+impl IndexMut<VoxelCoord> for ChunkData {
     fn index_mut(&mut self, pos: VoxelCoord) -> &mut Self::Output {
         &mut self.voxels[pos.index()]
     }
@@ -225,11 +225,11 @@ impl MeshData {
 
 #[derive(Default, Resource)]
 struct VoxelWorld {
-    chunks: HashMap<ChunkCoord, Chunk>,
+    chunks: HashMap<ChunkCoord, ChunkData>,
 }
 
 impl VoxelWorld {
-    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&Chunk> {
+    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
         let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
         self.chunks.get(&neighbor_pos)
     }
@@ -312,8 +312,8 @@ fn spawn_world(
     }
 }
 
-fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
-    let mut chunk = Chunk { voxels: [VoxelType::Air; _] };
+fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
+    let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..(((chunk_x + chunk_z) as usize % CHUNK_HEIGHT) + 1) {
@@ -327,7 +327,7 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
     chunk
 }
 
-fn build_mesh(chunk: &Chunk, chunk_pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
+fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
     let mut mesh_data = MeshData::default();
 
     for (voxel_pos, voxel) in chunk.iter()

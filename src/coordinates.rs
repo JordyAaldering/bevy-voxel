@@ -1,4 +1,4 @@
-use super::{CHUNK_WIDTH, CHUNK_HEIGHT};
+use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, direction::Direction};
 
 use bevy::math::{Vec3, vec3};
 
@@ -7,7 +7,7 @@ use bevy::math::{Vec3, vec3};
 /// x ∈ [0, CHUNK_WIDTH)
 /// y ∈ [0, CHUNK_HEIGHT)
 /// z ∈ [0, CHUNK_WIDTH)
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VoxelCoord {
     pub x: usize,
     pub y: usize,
@@ -34,7 +34,7 @@ impl VoxelCoord {
 }
 
 /// Coordinate of a voxel in global world space.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WorldCoord {
     pub x: i32,
     pub y: i32,
@@ -67,10 +67,19 @@ impl WorldCoord {
     pub const fn position(self) -> Vec3 {
         vec3(self.x as f32, self.y as f32, self.z as f32)
     }
+
+    pub const fn shift(self, direction: Direction) -> Self {
+        let (dx, dy, dz) = direction.offset();
+        Self {
+            x: self.x + dx,
+            y: self.y + dy,
+            z: self.z + dz,
+        }
+    }
 }
 
 /// Coordinate of a chunk in the world.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkCoord {
     pub x: i32,
     pub z: i32,

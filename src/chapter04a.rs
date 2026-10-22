@@ -45,11 +45,11 @@ impl VoxelType {
     }
 }
 
-struct Chunk {
+struct ChunkData {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
-impl Chunk {
+impl ChunkData {
     fn index(x: usize, y: usize, z: usize) -> usize {
         x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
@@ -67,7 +67,7 @@ impl Chunk {
         };
 
         if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            let idx = Chunk::index(x, y, z);
+            let idx = ChunkData::index(x, y, z);
             Some(self.voxels[idx])
         } else {
             None
@@ -78,7 +78,7 @@ impl Chunk {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {
                 (0..CHUNK_WIDTH).map(move |x| {
-                    let idx = Chunk::index(x, y, z);
+                    let idx = ChunkData::index(x, y, z);
                     (x, y, z, self.voxels[idx])
                 })
             })
@@ -259,12 +259,12 @@ fn spawn_chunk(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mut chunk = Chunk { voxels: [VoxelType::Air; _] };
+    let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
             for z in 0..CHUNK_WIDTH {
-                let idx = Chunk::index(x, y, z);
+                let idx = ChunkData::index(x, y, z);
                 chunk.voxels[idx] = VoxelType::Grass;
             }
         }
@@ -277,7 +277,7 @@ fn spawn_chunk(
     ));
 }
 
-fn build_mesh(chunk: &Chunk) -> Mesh {
+fn build_mesh(chunk: &ChunkData) -> Mesh {
     let mut mesh_data = MeshData::default();
 
     for (x, y, z, voxel) in chunk.iter()

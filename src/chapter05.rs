@@ -48,11 +48,11 @@ impl VoxelType {
     }
 }
 
-struct Chunk {
+struct ChunkData {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
-impl Chunk {
+impl ChunkData {
     fn index(x: usize, y: usize, z: usize) -> usize {
         x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
     }
@@ -70,7 +70,7 @@ impl Chunk {
         };
 
         if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            let idx = Chunk::index(x, y, z);
+            let idx = ChunkData::index(x, y, z);
             Some(self.voxels[idx])
         } else {
             None
@@ -81,7 +81,7 @@ impl Chunk {
         (0..CHUNK_WIDTH).flat_map(move |z| {
             (0..CHUNK_HEIGHT).flat_map(move |y| {
                 (0..CHUNK_WIDTH).map(move |x| {
-                    let idx = Chunk::index(x, y, z);
+                    let idx = ChunkData::index(x, y, z);
                     (x, y, z, self.voxels[idx])
                 })
             })
@@ -214,11 +214,11 @@ impl MeshData {
 
 #[derive(Default, Resource)]
 struct VoxelWorld {
-    chunks: HashMap<ChunkCoord, Chunk>,
+    chunks: HashMap<ChunkCoord, ChunkData>,
 }
 
 impl VoxelWorld {
-    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&Chunk> {
+    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
         let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
         self.chunks.get(&neighbor_pos)
     }
@@ -301,13 +301,13 @@ fn spawn_world(
     }
 }
 
-fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
-    let mut chunk = Chunk { voxels: [VoxelType::Air; _] };
+fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
+    let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..(((chunk_x + chunk_z) as usize % CHUNK_HEIGHT) + 1) {
             for z in 0..CHUNK_WIDTH {
-                let idx = Chunk::index(x, y, z);
+                let idx = ChunkData::index(x, y, z);
                 chunk.voxels[idx] = VoxelType::Grass;
             }
         }
@@ -316,7 +316,7 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Chunk {
     chunk
 }
 
-fn build_mesh(chunk: &Chunk, pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
+fn build_mesh(chunk: &ChunkData, pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
     let mut mesh_data = MeshData::default();
 
     for (x, y, z, voxel) in chunk.iter()
@@ -352,7 +352,7 @@ fn build_mesh(chunk: &Chunk, pos: ChunkCoord, world: &VoxelWorld) -> Mesh {
                         _ => unreachable!(),
                     };
 
-                    let idx = Chunk::index(nx, ny, nz);
+                    let idx = ChunkData::index(nx, ny, nz);
                     let neighbor = neighbor_chunk.voxels[idx];
                     if !neighbor.is_transparent() {
                         continue;
