@@ -501,15 +501,16 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (toggle_gamemode, player_look)
+            (toggle_gamemode, player_look, break_place_block)
                 .run_if(is_focused),
             move_survival
                 .run_if(is_focused.and_then(is_gamemode_survival)),
             move_spectator
                 .run_if(is_focused.and_then(is_gamemode_spectator)),
             draw_selected_voxel,
-            break_place_block,
-            remesh_chunks.after(break_place_block),
+        ))
+        .add_systems(PostUpdate, (
+            remesh_chunks,
         ))
         .add_systems(FixedUpdate, (
             player_physics
