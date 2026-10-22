@@ -13,7 +13,7 @@ This groups the different data of each voxel by type and puts them next to each 
 
 ## But what even is a mesh?
 
-<img align="right" width="40%" src="https://preview.redd.it/missed-out-on-not-having-the-polygon-lara-croft-as-cosmetic-v0-9hcvefmlv6dd1.jpeg?auto=webp&s=e2fff685ba3a16e48241ff2e47b2d7ce7c1f3b9a">
+<img align="right" width="30%" src="https://preview.redd.it/missed-out-on-not-having-the-polygon-lara-croft-as-cosmetic-v0-9hcvefmlv6dd1.jpeg?auto=webp&s=e2fff685ba3a16e48241ff2e47b2d7ce7c1f3b9a">
 
 Essentially, a mesh just defines the shape of a 3D object.
 This shape is broken up into polygons (triangles), that together form the surface of the shape.
