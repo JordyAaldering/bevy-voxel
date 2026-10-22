@@ -86,7 +86,7 @@ impl VoxelType {
     }
 
     fn is_solid(&self) -> bool {
-        !self.is_transparent()
+        !matches!(self, VoxelType::Air)
     }
 
     fn texture(self, direction: Direction) -> usize {
