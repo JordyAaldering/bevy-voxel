@@ -2,59 +2,60 @@
 
 Before we can start working on voxels, we need a basic Bevy project.
 Bevy releases breaking API changes approximately every three months, so follow the [quick start](https://bevy.org/learn/quick-start) to get a project up and running.
+Make sure you correctly configure your Cargo configuration, you don't want to spend hours waiting for compilation.
 
 Bevy uses _schedules_ to determine when systems run.
 The most common ones are `Startup`, `Update`, and `FixedUpdate`.
-`Startup` runs once when the app starts, while `Update` runs every frame.
-`FixedUpdate` runs at a fixed time interval, which is useful for things like physics.
-Bevy also provides `Pre` and `Post` schedules for additional control, and plugins can introduce their own schedules.
-
-The order in which systems run can be a source of bugs, especially when one system depends on another.
-For now, we'll use `Startup` to spawn our scene and `Update` to handle player input.
-We'll look at more ways to control system execution later.
-
-Make sure your app includes `DefaultPlugins`, then add the systems described below to their respective schedules.
+- `Startup` runs once when the app starts,
+- `Update` runs every frame, and
+- `FixedUpdate` runs at a fixed time interval, which is useful for things like physics.
+Bevy also provides `Pre` and `Post` schedules for additional control, and plugins can also introduce their own schedules.
+The order in which systems run can be a source of bugs, especially when systems depend on one another.
+When your project gets more complicated, think carefully about the ordering of systems.
 
 ## Spawning the scene
 
-Let's start with something simple: a pre-defined cuboid, a light, and a camera.
-We'll use a cuboid as our first voxel, even though we aren't building an actual voxel system just yet.
+We can't do anything before we can look and move around in our world.
+We start with a simple scene, containing a camera that we can move around, a pre-defined Bevy voxel, and a global light so we can actually see something.
 
-First, create a system to spawn the camera:
+The modern approach for spawning a scene in Bevy is with the [Bevy Scene Notation](https://taintedcoders.com/bevy/bsn).
+The scene we'll be creating is very simple, so you can also just create a system for spawning each entity that spawns each entity with `Commands::spawn`.
+Whichever you choose, create a function for spawning the camera, the directional light, and the voxel.
 
-```rust
-fn spawn_player(mut commands: Commands) {
-    commands.spawn((
-        todo!(),
-        todo!(),
-    ));
-}
-```
+### The camera
 
-Give the entity a `Camera3d` and a `Transform`, and optionally a `Name` for debugging.
+The camera entity needs a `Camera3d` and `Transform` component.
+Optionally, you can add a `Name` component for debugging.
+Use the default camera component, but move the transform slightly up, back, and to the right so it isn't inside the voxel.
 If you're unsure how to construct these components, use your IDE's autocompletion or consult the documentation.
-Move the camera slightly up and back so it isn't inside the cuboid, and use `Transform::looking_at` to point it towards the centre of the world.
+To make the camera look at the voxel we can use `Transform::looking_at`, no rotational math required.
 
-Next, create a system to spawn a directional light.
-Like the camera, it needs a `Transform`, alongside a `DirectionalLight`.
-We can use `Transform::from_rotation` to set its direction, passing in a quaternion created with `Quat::from_euler`.
+### Global lighting
 
-Finally, create a `spawn_voxel` system.
-This system spawns a cuboid with a mesh, a material, and a `Transform`.
+The directional light needs a `DirectionalLight` and `Transform` component.
+We use mostly the default directional light settings, but enable `shadow_maps_enabled` so we can see shadows.
+Shadows are expensive, so it is best to aggressively limit the number of lights that cast shadows.
+The position of the transform doesn't matter, but the rotation does.
+To create a transform with a specific rotation, we can use `Transform::from_rotation`.
+Rotations are represented as quaternions: 4-dimensional vectors that can represent any rotation in 3D space.
+Quaternions are hard to understand, but fortunately we can construct one from just the x, y, and z angles using `Quat::from_euler`.
 
-To create the mesh and material, we need access to Bevy's asset storage.
-Add `ResMut<Assets<Mesh>>` and `ResMut<Assets<StandardMaterial>>` as system parameters.
-`ResMut` gives us mutable access to these resources, allowing us to add new assets.
+### The voxel
 
-We create a mesh from a `Cuboid` and add it to the mesh asset storage using `Assets::add`.
-As the [documentation](https://docs.rs/bevy/latest/bevy/asset/struct.Assets.html#method.add) explains, this returns a strong handle to the newly added asset.
-We use that handle to construct the `Mesh3d` component.
+We won't yet be creating our own voxel.
+First, we'll use a pre-defined Bevy voxel: a `Cuboid`.
+It needs two components: a mesh, and a material.
+The mesh defines the shape of the voxel, and the material defines how the surface of that shape looks.
+The mesh component, `Mesh3d`, has a single field `Handle<Mesh>`, which is a reference to the actual mesh data.
+It works like this because meshes and materials may be shared between entities.
+The mesh data itself lives in _asset stores_, which we access by adding `mut meshes: ResMut<Assets<Mesh>>` as an argument.
+We then add a `Cuboid` to the mesh asset store with `meshes.add`.
+Adding a `MeshMaterial3d` works the same way, but we add a `StandardMaterial` to the material asset store instead.
+The material itself is just a colour, created from RGB values with `Color::linear_rgb`.
+As most things, the entity also needs a `Transform`.
 
-The material works in much the same way.
-Create a material using a `Color`, add it to the material asset storage, and use the returned handle to construct a `MeshMaterial3d` component.
-
-With all three systems implemented, add them to the appropriate schedules in `main`.
-Run the game and you should see a lit cuboid.
+With all three systems in place, add them to the `Startup` schedule and run the app.
+You should see a voxel in the middle of the screen.
 
 ## Cursor locking
 

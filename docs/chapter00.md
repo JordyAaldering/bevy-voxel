@@ -1,36 +1,28 @@
 # Foreword
 
-I like figuring out how things work under the hood.
-When developing something, I often wonder how a system works, whether it could be done differently, or how I would implement it myself.
-There's a lot of satisfaction in understanding something well enough to build it yourself.
+There's already so many voxel tutorials in the world, so why make another one?
+Honestly, this is mainly for myself; normally I would blaze through the coding.
+By developing the code in a tutorial format, I force myself to 'stop and smell the roses'.
+First, this means we more carefully think about how our code will evolve or what kind of functionality we might need later.
+I wouldn't say you should future-proof code for functionality you _might_ need, though when you have an idea of the kinds of things you need to take into account in the future, you can at least structure your code around that.
+Second, taking it slow means we can focus on some other things than purely generating a world of blocks.
+In these guides we'll also be looking into creating a telemetry web-server, learning how simplex noise works, creating an editor, etc.
+Sure, we could use a noise library, there's a lot of satisfaction in understanding something well enough to build it yourself.
+That should be why you're here, because otherwise you could just use a voxel engine, use something like [bevy-voxel-world](https://crates.io/crates/bevy_voxel_world) instead.
+Are those needed just for making a voxel world?
+No, but if you want to take this any further they are definitely useful.
 
-This guide follows the same approach.
-The goal isn't just to make a voxel game, but to explore the concepts behind it and learn how to figure things out yourself.
-I'll sometimes go off on tangents about things I find interesting, so if that sounds like your kind of thing, stick around.
-If you just want a voxel engine, use something like [bevy-voxel-world](https://crates.io/crates/bevy_voxel_world) instead.
-
-These are deliberately called _chapters_, rather than _tutorials_.
-I provide code snippets instead of complete implementations because I want you to understand how things work, not just copy a solution.
-Copy-pasting code doesn't teach you how to debug it, adapt it to your needs, or continue when you encounter a problem the guide doesn't cover.
-I'll also refer to external resources where they explain a concept better than I can.
-
-This approach requires some effort on your part.
-Try to understand the concepts that interest you, and do your own research when something doesn't make sense.
-Don't assume something is correct just because it's written confidently.
-This is particularly relevant with AI-generated content, which can present incorrect information just as convincingly as correct information.
-I'll try to keep tangents separate from the main subject so you can skip the ones that don't interest you.
-
-I'm no Bevy or game design professional, so don't expect everything here to be optimal.
-There are often multiple ways to solve a problem, and what works best depends on the circumstances.
+I'm no Bevy or game design professional, so don't expect everything here to optimal.
 The code might be out of date, and some solutions might not follow established Bevy conventions.
-Treat this guide as a starting point, and feel free to point out mistakes or improvements in a GitHub issue.
-If you find a better solution that doesn't make the guide more complex, please share it.
+Treat this guide as a starting point, and feel free to suggest improvements in a GitHub issue.
+If you find this guide useful, please star the repository, so I know that _someone_ is reading this, and I should continue working on it.
 
 Before starting, I recommend reading the [Bevy introduction](https://bevy.org/news/introducing-bevy).
 It's a little outdated, but explains the core ideas well.
-Pay particular attention to the Entity Component System (ECS) paradigm, as understanding it is crucial for working with Bevy.
-You don't need to know everything up front; just get a feel for what's available.
+In particular, the _Entity Component System_ (ECS) is an important concept, as it lies at the core of everything Bevy does.
 
 With that out of the way, let's get started.
 We'll build up a voxel game step by step, exploring the concepts along the way.
-The aim is to leave you with more than a working project: a better understanding of how things work and how to figure out the things we haven't covered.
+The aim is not to leave you with a working project.
+Rather, I deliberately won't give complete code snippets.
+That means more effort is required from your side, but ultimately it should teach you actual understanding of your code.
