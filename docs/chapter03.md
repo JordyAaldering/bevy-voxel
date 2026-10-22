@@ -11,6 +11,23 @@ Second, graphics cards are not optimized for rendering on many small meshes, sca
 They are much better at operating on large, contiguous blocks of data, which is why we want to combine many voxels into a single mesh.
 This groups the different data of each voxel by type and puts them next to each other in memory, which is much more efficient for the GPU to process.
 
+## Visualizing meshes
+
+We can visualize the so-called _wireframe_ of a mesh by drawing lines between the vertices of each triangle.
+In Bevy, we can do this by adding the `WireframePlugin` to our app.
+Then, we insert the configuration globally for all meshes:
+
+```rust
+WireframeConfig {
+    global: true,
+    ..default()
+}
+```
+
+Run the game, and see what the mesh looks like.
+Use the inspector to adjust the scale of the cube, and observe how the wireframe changes.
+Then, replace the cube with a `Sphere`, or some other shape, and see how the wireframe looks for that shape.
+
 ## But what even is a mesh?
 
 <img align="right" width="30%" src="https://preview.redd.it/missed-out-on-not-having-the-polygon-lara-croft-as-cosmetic-v0-9hcvefmlv6dd1.jpeg?auto=webp&s=e2fff685ba3a16e48241ff2e47b2d7ce7c1f3b9a">
@@ -25,132 +42,50 @@ Each 3-tuple in the list of indices tells which three vertices form a triangle.
 
 To make a triangle, we need three vertices and three indices.
 The triangle is then formed by connecting the three vertices in the order specified by the indices.
-Say, we have the following vertices: $v_0 = (0, 0)$, $v_1 = (1, 0)$, and $v_2 = (1, 1)$.
+Say, we have the following vertices: $v_0 = (0, 0)$, $v_1 = (1, 0)$, and $v_2 = (0, 1)$.
 
 ```text
-|       v1
+| v2
 |
 |
-| v0    v2
-+——————————
+| v0   v1
++—————————
 ```
 
 If the indices are `[0, 2, 1]`, then the triangle is formed by connecting $v_0$ to $v_2$, $v_2$ to $v_1$, and $v_1$ back to $v_0$.
 
 ```text
-|       v1       |       v1       |     / v1
-|                |       |        |    /  |
-|                |       |        |   /   |
-| v0————v2       | v0————v2       | v0————v2
-+——————————      +——————————      +——————————
+| v2            | v2            | v2
+|  |            |  | \          |  | \
+|  |            |  |  \         |  |  \
+| v0   v1       | v0   v1       | v0———v1
++—————————      +—————————      +—————————
 ```
 
 A square has four corners, but because we can only make triangles, we need to split it into two triangles, resulting in $2 \times 3 = 6$ indices.
 However, these two triangles share two vertices, meaning we only need four vertices.
-In the previous example, that would mean adding a fourth vertex $v_3 = (0, 1)$ and extending the indices to `[0, 2, 1, 0, 1, 3]`.
+In the previous example, that would mean adding a fourth vertex $v_3 = (1, 1)$ and extending the indices to `[0, 2, 1, 1, 2, 3]`.
 
 Before we get to chunks, let's start with a single cube and build its mesh ourselves.
 Along the way, we'll explore how meshes work in general.
 The concepts apply to all kinds of geometry, not just voxels.
 
-## Defining the faces
+## Winding order
 
-Our cube occupies the space between `(0, 0, 0)` and `(1, 1, 1)`.
-We'll generate its vertices directly in this coordinate range and leave the mesh at the world origin.
+The order in which we create a triangle matters.
+In the previous example, we created a triangle in a clockwise order.
+In a counter-clockwise order, the indices would be `[0, 1, 2]`.
 
-Each face lies along one of the three coordinate axes.
-We can represent the six possible directions with an enum:
+This distinction matters: we typically only render one side of a triangle.
+We normally don't see the inside of a mesh anyway, so why would we bother rendering both sides.
+However, that means we need to be careful about the order in which we create triangles, or some of them might seem invisible.
+(Using the wireframe view can help you find these kinds of errors.)
 
-```text
-          Top (+Y)
-             ↑
-             |
-Left (-X) ← [ ] → Right (+X)
-             |
-             ↓
-         Bottom (-Y)
+By default, Bevy uses a [counter-clockwise](https://docs.rs/bevy/latest/bevy/mesh/struct.Mesh.html) winding order.
+That means the example from before would be invisible, because the triangle is facing the wrong way.
+Instead, we should create the cube from the indices `[0, 1, 2, 2, 1, 3]`.
 
-    Front (+Z) / Back (-Z)
-```
-
-The front and back faces lie along the Z axis.
-In Bevy, positive Z points forward, so moving backward decreases the Z coordinate.
-
-Rather than defining six unrelated sets of vertices, we can represent a face by its direction and generate its four corners based on that direction.
-For example, the top face lies at `y = 1`, while the bottom face lies at `y = 0`.
-The other faces follow the same principle.
-
-This is a useful general approach to procedural geometry: identify what varies, represent it as data, and use shared logic to generate the geometry.
-Here, the direction determines which four corners make up the face.
-
-The `Face::vertices()` method in the code handles the six possible directions.
-Pay attention to the order in which the vertices are returned, because it affects how the triangles are constructed.
-
-## Connecting vertices with indices
-
-Knowing the positions of the vertices isn't enough.
-The renderer also needs to know which vertices form each triangle.
-This is what indices are for.
-
-Imagine that we store the four corners of a face in an array.
-The indices `0, 1, 2` identify the first triangle, while `2, 1, 3` identify the second.
-
-```text
-v2 +---------+ v3
-   |       / |
-   |     /   |
-   |   /     |
-   | /       |
-v0 +---------+ v1
-
-Triangle 1: 0, 1, 2
-Triangle 2: 2, 1, 3
-```
-
-Indices refer to entries in the vertex array, not positions in 3D space.
-This lets us describe triangles without repeating the full vertex data for every triangle.
-
-Our cube has six faces, each consisting of two triangles, giving us twelve triangles in total.
-
-The implementation generates four vertices for each face and appends them to a shared array.
-The `start` argument passed to `Face::indices()` tells the face where its vertices begin in that array.
-
-```text
-Face 1: vertices  0–3   indices refer to 0–3
-Face 2: vertices  4–7   indices refer to 4–7
-Face 3: vertices  8–11  indices refer to 8–11
-...
-Face 6: vertices 20–23  indices refer to 20–23
-```
-
-The same index pattern works for every face.
-We simply offset it by the number of vertices already added.
-
-### Winding order
-
-The order in which we list a triangle's vertices matters.
-This is called its _winding order_.
-
-Graphics pipelines commonly use winding order to determine which side of a triangle is the front.
-This allows back-face culling: the renderer can skip triangles facing away from the camera.
-
-```text
-Counterclockwise:   Clockwise:
-
-v2                  v1
-| \                 | \
-|  \                |  \
-v0--v1              v0--v2
-```
-
-The practical rule is to keep the winding order consistent and ensure that the outside of your mesh is oriented correctly.
-If a face has the wrong winding order, it might disappear when viewed from outside the cube.
-
-In our implementation, the vertices are ordered so that the triangles face outward.
-The indices then split each face into two triangles while preserving that orientation.
-
-This is worth understanding when generating any mesh.
-If a surface unexpectedly disappears, checking the vertex order and triangle winding is a good place to start.
+---
 
 ## Surface normals
 
