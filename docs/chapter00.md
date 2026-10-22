@@ -26,4 +26,4 @@ Before starting, I recommend reading the [Bevy introduction](https://bevy.org/ne
 It's a little outdated, but it explains the core ideas well.
 In particular, the _Entity Component System_ (ECS) is an important concept, as it lies at the core of everything Bevy does.
 
-> Note: This guide is still a work in progress, so some information may be incorrect. If you spot something that could be improved, feel free to suggest it in a GitHub issue.
+>  Note: This guide is still a hot piece of garbage. As a placeholder, some text is AI generated (it's better than nothing), so be aware that information may be incorrect. Please star the repository if you find this guide useful, so I know to spend time on it. So far, only the first two chapters are fully human-written.
