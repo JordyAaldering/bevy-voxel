@@ -132,7 +132,7 @@ struct ChunkMaterial(Handle<StandardMaterial>);
 struct NeedsRemesh;
 
 #[derive(Component)]
-pub struct NeedsDespawn;
+struct NeedsDespawn;
 
 struct ChunkData {
     coord: ChunkCoord,

@@ -1,27 +1,85 @@
-mod chunk;
-mod chunk_mesh;
-mod editor;
-mod face;
+mod axis;
+mod coordinates;
+mod direction;
 mod opensimplex2s;
 mod telemetry;
-mod texture_atlas;
-mod voxel;
-mod world;
 
-use std::time::Duration;
+use crate::{
+    axis::Axis,
+    coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
+    direction::Direction,
+    telemetry::{Telemetry, TelemetryPublisher},
+};
 
-use bevy::{camera::visibility::RenderLayers, camera_controller::pan_orbit_camera::{DefaultPanOrbitCameraPlugins, SyncCameraPosition, controller::component::PanOrbitCamera}, diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit}, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow}};
-use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_egui::{EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext}, prelude::*};
+use std::{mem, ops::{Index, IndexMut}, time::Duration};
 
-use crate::{chunk::*, editor::EditorState, face::*, telemetry::{Telemetry, TelemetryPublisher}, voxel::*, world::*};
+use better_default::Default;
+use bevy::{
+    prelude::*,
+    asset::RenderAssetUsages,
+    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
+    input::mouse::AccumulatedMouseMotion,
+    mesh::{Indices, PrimitiveTopology},
+    platform::collections::HashMap,
+    time::common_conditions::on_timer,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+};
+use bevy_inspector_egui::{
+    prelude::*,
+    bevy_egui::{
+        prelude::*,
+        input::EguiWantsInput,
+    },
+    quick::WorldInspectorPlugin,
+};
 
-#[derive(Resource, Reflect, InspectorOptions)]
+const CHUNK_WIDTH: usize = 32;
+const CHUNK_HEIGHT: usize = 64;
+
+const CHUNK_LOAD_RADIUS: i32 = 1;
+
+const ATLAS_ROWS: u32 = 4;
+const ATLAS_COLUMNS: u32 = 4;
+const ATLAS_SIZE: u32 = ATLAS_COLUMNS * ATLAS_ROWS;
+
+/// Prevents exact boundary contact from being treated as an overlap with the adjacent voxel.
+const COLLISION_EPSILON: f32 = 1e-3;
+
+const PLAYER_WIDTH: f32 = 0.6;
+const PLAYER_WIDTH_HALF: f32 = PLAYER_WIDTH * 0.5;
+const PLAYER_HEIGHT: f32 = 1.8;
+const PLAYER_EYE_HEIGHT: f32 = 1.6;
+const MAX_PITCH: f32 = 1.4;
+const GRAVITY: f32 = 20.0;
+
+const INTERACTION_DISTANCE: f32 = 5.0;
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
+enum GameMode {
+    #[default]
+    Survival,
+    Spectator,
+}
+
+#[derive(Default, Component)]
+struct Player {
+    velocity: Vec3,
+    grounded: bool,
+}
+
+#[derive(Component)]
+struct PlayerCamera;
+
+#[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]
 struct CameraSettings {
+    #[default(5.0)]
     #[inspector(min = 0.1, max = 20.0)]
     move_speed: f32,
+    #[default(7.0)]
     #[inspector(min = 0.1, max = 20.0)]
     jump_strenght: f32,
+    #[default(0.0025)]
     #[inspector(min = 0.0001, max = 0.01)]
     mouse_sensitivity: f32,
 }
@@ -33,54 +91,426 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-impl Default for CameraSettings {
-    fn default() -> Self {
-        Self {
-            move_speed: 5.0,
-            jump_strenght: 7.0,
-            mouse_sensitivity: 0.00255,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VoxelType {
+    Air,
+    Grass,
+    Dirt,
+    Stone,
+}
+
+impl VoxelType {
+    fn is_transparent(&self) -> bool {
+        matches!(self, VoxelType::Air)
+    }
+
+    fn is_solid(&self) -> bool {
+        !matches!(self, VoxelType::Air)
+    }
+
+    fn texture(self, direction: Direction) -> usize {
+        fn atlas_index(x: usize, y: usize) -> usize {
+            x + (y * ATLAS_COLUMNS as usize)
+        }
+
+        match self {
+            Self::Grass => {
+                match direction {
+                    Direction::Top => atlas_index(3, 1),
+                    Direction::Bottom => atlas_index(1, 0),
+                    _ => atlas_index(2, 0),
+                }
+            },
+            Self::Dirt => atlas_index(1, 0),
+            Self::Stone => atlas_index(0, 0),
+            _ => unreachable!(),
         }
     }
 }
 
 #[derive(Debug)]
 struct VoxelHit {
-    position: WorldPosition,
-    face: FaceDirection,
+    coord: WorldCoord,
+    direction: Direction,
 }
 
-const PLAYER_WIDTH: f32 = 0.6;
-const PLAYER_WIDTH_HALF: f32 = PLAYER_WIDTH * 0.5;
-const PLAYER_HEIGHT: f32 = 1.8;
-const PLAYER_EYE_HEIGHT: f32 = 1.6;
-const MAX_PITCH: f32 = 1.4;
-const GRAVITY: f32 = 20.0;
-
-const INTERACTION_DISTANCE: f32 = 5.0;
-
-/// Prevents exact boundary contact from being treated as an overlap with the adjacent voxel.
-const COLLISION_EPSILON: f32 = 1e-3;
-
-#[derive(Resource, Default, PartialEq, Eq)]
-enum GameMode {
-    #[default]
-    Survival,
-    Spectator,
+/// ECS component of a chunk.
+#[derive(Component)]
+struct Chunk {
+    coord: ChunkCoord,
 }
 
+#[derive(Resource)]
+struct ChunkMaterial(Handle<StandardMaterial>);
+
 #[derive(Component)]
-struct Player {
-    velocity: Vec3,
-    grounded: bool,
+struct NeedsRemesh;
+
+#[derive(Component)]
+struct NeedsDespawn;
+
+struct ChunkData {
+    coord: ChunkCoord,
+    voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    entity: Option<Entity>,
 }
 
-#[derive(Component)]
-pub struct PlayerCamera;
+impl ChunkData {
+    fn new(coord: ChunkCoord, entity: Entity) -> Self {
+        Self {
+            coord,
+            voxels: [VoxelType::Air; _],
+            entity: Some(entity),
+        }
+    }
 
-#[derive(Component)]
-pub struct EditorCamera;
+    fn build_mesh(&self, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
+        let mut mesh_data = MeshData::new(atlas);
 
-fn main() {
+        for (voxel_pos, voxel) in self.iter()
+            .filter(|(_, voxel)| *voxel != VoxelType::Air)
+        {
+            for direction in Direction::iter() {
+                if let Some(neighbor) = self.get_neighbor_voxel(voxel_pos, direction) {
+                    if !neighbor.is_transparent() {
+                        continue;
+                    }
+                } else {
+                    // If get_neighbor_voxel returns None, the voxel exists in a neighboring chunk
+                    let offset = match direction {
+                        Direction::Right => Some((1, 0)),
+                        Direction::Left => Some((-1, 0)),
+                        Direction::Front => Some((0, 1)),
+                        Direction::Back => Some((0, -1)),
+                        _ => None,
+                    };
+
+                    if let Some((dx, dz)) = offset &&
+                        let Some(neighbor_chunk) = world.get_chunk_neighbor(self.coord, dx, dz)
+                    {
+                        let VoxelCoord { x, y, z } = voxel_pos;
+
+                        let (nx, ny, nz) = match direction {
+                            Direction::Right => (0, y, z),
+                            Direction::Left => (CHUNK_WIDTH - 1, y, z),
+                            Direction::Front => (x, y, 0),
+                            Direction::Back => (x, y, CHUNK_WIDTH - 1),
+                            _ => unreachable!(),
+                        };
+
+                        let voxel_pos = VoxelCoord::new(nx, ny, nz);
+                        let neighbor = neighbor_chunk[voxel_pos];
+                        if !neighbor.is_transparent() {
+                            continue;
+                        }
+                    }
+                }
+
+                let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
+                let texture = voxel.texture(direction);
+                mesh_data.add_quad(direction, origin, texture);
+            }
+        }
+
+        mesh_data.build()
+    }
+
+    fn set_entity(&mut self, entity: Entity) {
+        debug_assert!(self.entity.is_none());
+        self.entity = Some(entity);
+    }
+
+    fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
+        let VoxelCoord { x, y, z } = pos;
+
+        // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
+        // which is definitely greather than the width and height.
+        let (x, y, z) = match direction {
+            Direction::Right => (x + 1, y, z),
+            Direction::Left => (x.wrapping_sub(1), y, z),
+            Direction::Top => (x, y + 1, z),
+            Direction::Bottom => (x, y.wrapping_sub(1), z),
+            Direction::Front => (x, y, z + 1),
+            Direction::Back => (x, y, z.wrapping_sub(1)),
+        };
+
+        if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
+            Some(self[VoxelCoord::new(x, y, z)])
+        } else {
+            None
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (VoxelCoord, VoxelType)> {
+        (0..CHUNK_WIDTH).flat_map(move |z| {
+            (0..CHUNK_HEIGHT).flat_map(move |y| {
+                (0..CHUNK_WIDTH).map(move |x| {
+                    let pos = VoxelCoord::new(x, y, z);
+                    (pos, self[pos])
+                })
+            })
+        })
+    }
+}
+
+impl Index<VoxelCoord> for ChunkData {
+    type Output = VoxelType;
+
+    fn index(&self, pos: VoxelCoord) -> &Self::Output {
+        &self.voxels[pos.index()]
+    }
+}
+
+impl IndexMut<VoxelCoord> for ChunkData {
+    fn index_mut(&mut self, pos: VoxelCoord) -> &mut Self::Output {
+        &mut self.voxels[pos.index()]
+    }
+}
+
+struct MeshData<'a> {
+    atlas: &'a TextureAtlasLayout,
+    vertices: Vec<Vec3>,
+    indices: Vec<u32>,
+    normals: Vec<Vec3>,
+    uvs: Vec<Vec2>,
+}
+
+impl<'a> MeshData<'a> {
+    fn new(atlas: &'a TextureAtlasLayout) -> Self {
+        Self {
+            atlas,
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            normals: Vec::new(),
+            uvs: Vec::new(),
+        }
+    }
+
+    fn add_quad(&mut self, direction: Direction, origin: Vec3, texture: usize) {
+        let start = self.vertices.len() as u32;
+        self.add_quad_indices(start);
+        self.vertices.extend(Self::quad_vertices(direction, origin));
+        self.add_quad_normals(direction);
+        self.add_quad_uvs(texture);
+    }
+
+    /// Adds the vertex indices for a quad (two triangles).
+    ///
+    /// Vertices are ordered as viewed from outside the voxel:
+    /// ```text
+    /// 2----3
+    /// | \  |
+    /// |  \ |
+    /// 0----1
+    /// ```
+    fn add_quad_indices(&mut self, start: u32) {
+        self.indices.extend([
+            // First triangle
+            start + 0, // Bottom left
+            start + 1, // Bottom right
+            start + 2, // Top left
+            // Second triangle
+            start + 2, // Top left
+            start + 1, // Bottom right
+            start + 3, // Top right
+        ]);
+    }
+
+    /// Returns the four vertices of the quad.
+    ///
+    /// The quad is defined by the origin and direction of the face:
+    /// ```text
+    ///     (0,1,0)-------------------(1,1,0)
+    ///          /|                  /|
+    ///         / |                 / |
+    ///        /  |                /  |
+    /// (0,1,1)-------------(1,1,1)   |
+    ///       |   |               |   |
+    ///       |   |               |   |
+    ///       |   |               |   |
+    ///       |  (0,0,0)----------|--(1,0,0)
+    ///       | /                 | /
+    ///       |/                  |/
+    /// (0,0,1)-------------------(1,0,1)
+    /// ```
+    ///
+    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
+    fn quad_vertices(direction: Direction, o: Vec3) -> [Vec3; 4] {
+        match direction {
+            Direction::Right => [
+                o + Vec3::X + Vec3::Z,
+                o + Vec3::X,
+                o + Vec3::X + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y,
+            ],
+            Direction::Left => [
+                o,
+                o + Vec3::Z,
+                o + Vec3::Y,
+                o + Vec3::Y + Vec3::Z,
+            ],
+            Direction::Top => [
+                o + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y + Vec3::Z,
+                o + Vec3::Y,
+                o + Vec3::X + Vec3::Y,
+            ],
+            Direction::Bottom => [
+                o,
+                o + Vec3::X,
+                o + Vec3::Z,
+                o + Vec3::X + Vec3::Z,
+            ],
+            Direction::Front => [
+                o + Vec3::Z,
+                o + Vec3::X + Vec3::Z,
+                o + Vec3::Y + Vec3::Z,
+                o + Vec3::X + Vec3::Y + Vec3::Z,
+            ],
+            Direction::Back => [
+                o + Vec3::X,
+                o,
+                o + Vec3::X + Vec3::Y,
+                o + Vec3::Y,
+            ],
+        }
+    }
+
+    /// Returns the normals of the 4 corners of the quad.
+    fn add_quad_normals(&mut self, direction: Direction) {
+        self.normals.extend([direction.vec3(); 4]);
+    }
+
+    /// Returns the UV coordinates of the 4 corners of the quad.
+    fn add_quad_uvs(&mut self, index: usize) {
+        let rect = self.atlas.textures[index];
+        let size = self.atlas.size.as_vec2();
+        let min = rect.min.as_vec2() / size;
+        let max = rect.max.as_vec2() / size;
+        self.uvs.extend([
+            vec2(min.x, max.y), // Bottom left
+            vec2(max.x, max.y), // Bottom right
+            vec2(min.x, min.y), // Top left
+            vec2(max.x, min.y), // Top right
+        ]);
+    }
+
+    fn build(&mut self) -> Mesh {
+        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mem::take(&mut self.vertices))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mem::take(&mut self.normals))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mem::take(&mut self.uvs))
+            .with_inserted_indices(Indices::U32(mem::take(&mut self.indices)))
+    }
+}
+
+#[derive(Default, Resource)]
+struct VoxelWorld {
+    chunks: HashMap<ChunkCoord, ChunkData>,
+}
+
+#[derive(Resource)]
+struct VoxelAtlas(TextureAtlasLayout);
+
+impl VoxelWorld {
+    fn is_solid(&self, pos: WorldCoord) -> bool {
+        self.get_voxel(pos)
+            .is_some_and(|voxel| voxel.is_solid())
+    }
+
+    /// Spawns an entity for the chunk at `coord`. The voxel data is generated only
+    /// if it does not exist yet, so earlier modifications survive unloading.
+    fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
+        let entity = commands.spawn((
+            Name::new(format!("Chunk ({}, {})", coord.x, coord.z)),
+            Transform::from_translation(coord.position()),
+            Chunk { coord },
+            NeedsRemesh,
+        )).id();
+
+        if let Some(chunk) = self.chunks.get_mut(&coord) {
+            chunk.set_entity(entity);
+        } else {
+            let mut chunk = ChunkData::new(coord, entity);
+            generate_chunk(&mut chunk);
+            self.chunks.insert(coord, chunk);
+        }
+
+        // Existing neighbors previously treated this side as open, so their border faces change
+        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            if let Some(neighbor) = self.get_chunk_neighbor(coord, dx, dz) {
+                if let Some(neighbor_entity) = neighbor.entity {
+                    commands.entity(neighbor_entity).insert(NeedsRemesh);
+                }
+            }
+        }
+
+        entity
+    }
+
+    fn get_voxel(&self, pos: WorldCoord) -> Option<VoxelType> {
+        if pos.y < 0 || pos.y >= CHUNK_HEIGHT as i32 {
+            return None;
+        }
+
+        let chunk_pos = pos.chunk_coord();
+        self.chunks.get(&chunk_pos).map(|chunk| {
+            let voxel_pos = pos.local_coord();
+            chunk[voxel_pos]
+        })
+    }
+
+    fn set_voxel(&mut self, commands: &mut Commands, pos: WorldCoord, voxel: VoxelType) {
+        let voxel_pos = pos.local_coord();
+        let chunk_pos = pos.chunk_coord();
+        let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
+        chunk[voxel_pos] = voxel;
+
+        if let Some(entity) = chunk.entity {
+            commands.entity(entity).insert(NeedsRemesh);
+        }
+
+        // Voxels on a chunk border influence the faces of the adjacent chunk
+        if voxel_pos.x == 0 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, -1, 0) {
+                if let Some(entity) = neighbor.entity {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
+            }
+        } else if voxel_pos.x == CHUNK_WIDTH - 1 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 1, 0) {
+                if let Some(entity) = neighbor.entity {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
+            }
+        }
+        if voxel_pos.z == 0 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, -1) {
+                if let Some(entity) = neighbor.entity {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
+            }
+        } else if voxel_pos.z == CHUNK_WIDTH - 1 {
+            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, 1) {
+                if let Some(entity) = neighbor.entity {
+                    commands.entity(entity).insert(NeedsRemesh);
+                }
+            }
+        }
+    }
+
+    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
+        let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
+        self.chunks.get(&neighbor_pos)
+    }
+
+    fn is_loaded(&self, coord: ChunkCoord) -> bool {
+        self.chunks.get(&coord)
+            .is_some_and(|chunk| chunk.entity.is_some())
+    }
+}
+
+fn main() -> AppExit {
     let (sender, receiver) = tokio::sync::watch::channel(Telemetry::default());
 
     // Run Tokio on its own thread, independently of the game
@@ -88,92 +518,55 @@ fn main() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Could not create Tokio runtime");
+            .unwrap();
         runtime.block_on(telemetry::run_server(receiver));
     });
 
     App::new()
         .add_plugins((
             DefaultPlugins
-                .set(ImagePlugin::default_nearest())
-                .set(WindowPlugin {
-                    primary_cursor_options: Some(CursorOptions {
-                        grab_mode: CursorGrabMode::Locked,
-                        visible: false,
-                        ..default()
-                    }),
-                    ..default()
-                }),
+                .set(ImagePlugin::default_nearest()),
+            EguiPlugin::default(),
+            WorldInspectorPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
         ))
-        .add_plugins((
-            MeshPickingPlugin,
-            DefaultPanOrbitCameraPlugins,
-        ))
-        .add_plugins(EguiPlugin::default())
-        .add_plugins(DefaultInspectorConfigPlugin)
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
         .init_resource::<CameraSettings>()
-        .init_resource::<DebugGizmos>()
-        .init_resource::<EditorState>()
         .register_type::<CameraSettings>()
-        .register_type::<DebugGizmos>()
         .insert_resource(TelemetryPublisher(sender))
-        .add_systems(EguiPrimaryContextPass, editor::show_editor)
-        .add_systems(PostUpdate, editor::update_view_targets.after(editor::show_editor))
         .add_systems(Startup, (
-            spawn_global_illumination,
-            (editor::setup_view_targets, spawn_player).chain(),
             setup_chunk_material,
-        ))
-        .add_systems(PreUpdate, (
-            // These all depend on user input
-            toggle_cursor,
-            (toggle_gamemode, player_look, break_place_block)
-                .run_if(game_view_captured),
-            // Keeps running while uncaptured, so gravity still applies
-            player_move.run_if(editor::is_game_view_visible),
-            editor_camera_input
-                .run_if(editor::is_editor_view_visible)
-                .before(SyncCameraPosition),
+            spawn_global_illumination,
+            spawn_player,
         ))
         .add_systems(Update, (
+            telemetry::collect_telemetry
+                .run_if(on_timer(Duration::from_millis(250))),
+            toggle_cursor,
+            (toggle_gamemode, player_look, break_place_block)
+                .run_if(is_focused),
+            move_survival
+                .run_if(is_focused.and_then(is_gamemode_survival)),
+            move_spectator
+                .run_if(is_focused.and_then(is_gamemode_spectator)),
             draw_selected_voxel,
             spawn_chunks_around_player,
             retire_distant_chunks,
-            remesh_chunks,
-            telemetry::collect_telemetry.run_if(on_timer(Duration::from_millis(250)))
         ))
         .add_systems(PostUpdate, (
-            // Do this at the end, because other systems might modify this chunk first
+            // TODO: check if we need a constraint between these
             despawn_retired_chunks,
+            remesh_chunks,
         ))
-        .run();
+        .add_systems(FixedUpdate, (
+            player_physics
+                .run_if(is_gamemode_survival),
+        ))
+        .run()
 }
-
-// fn debug_settings_ui(world: &mut World) {
-//     let Ok(egui_context) = world
-//         .query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
-//         .single(world)
-//     else {
-//         return;
-//     };
-//     let mut ctx = egui_context.clone();
-//     egui::Window::new("Settings").show(ctx.get_mut(), |ui| {
-//         ui.heading("Camera Settings");
-//         ui.push_id("camera_settings", |ui| {
-//             bevy_inspector::ui_for_resource::<CameraSettings>(world, ui);
-//         });
-//         ui.separator();
-//         ui.heading("Debug Gizmos");
-//         ui.push_id("debug_gizmos", |ui| {
-//             bevy_inspector::ui_for_resource::<DebugGizmos>(world, ui);
-//         });
-//     });
-// }
 
 fn spawn_global_illumination(mut commands: Commands) {
     commands.spawn((
@@ -189,123 +582,130 @@ fn spawn_global_illumination(mut commands: Commands) {
     ));
 }
 
-fn spawn_player(
-    mut commands: Commands,
-    mut egui_settings: ResMut<EguiGlobalSettings>,
-    editor_state: Res<EditorState>,
-) {
-    // Egui gets its own camera; the game cameras render to images shown inside the editor
-    egui_settings.auto_create_primary_context = false;
-    commands.spawn((
-        PrimaryEguiContext,
-        Camera2d,
-        RenderLayers::none(),
-        Camera { order: 1, ..default() },
-    ));
-
-    commands.spawn((
-        Name::new("Editor Camera"),
-        EditorCamera,
-        Camera3d::default(),
-        Camera { is_active: false, ..default() },
-        PanOrbitCamera::default(),
-        editor::editor_camera_target(&editor_state),
-        Projection::from(PerspectiveProjection {
-            fov: 70f32.to_radians(),
-            ..default()
-        }),
-        Transform::from_xyz(1.5, 60.0, 40.0).looking_at(vec3(1.5, 20.0, 1.5), Vec3::Y),
-    ));
-
-    // In future we need to ensure to use some configuration to determine the x/y scaling (not relevant here because zero), the scaling, and the offset.
+fn spawn_player(mut commands: Commands) {
     let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
-    commands
-        .spawn((
+
+    commands.spawn((
             Name::new("Player"),
-            Player {
-                velocity: Vec3::ZERO,
-                grounded: false,
-            },
+            Player::default(),
             Transform::from_xyz(1.5, world_height as f32 + 1.0, 1.5),
-            InheritedVisibility::default(),
         ))
-        .with_children(|player| {
-            player.spawn((
+        .with_children(|commands| {
+            commands.spawn((
                 PlayerCamera,
                 Camera3d::default(),
-                editor::game_camera_target(&editor_state),
-                Projection::from(PerspectiveProjection {
-                    fov: 70f32.to_radians(),
-                    ..default()
-                }),
                 Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
             ));
         });
 }
-
-#[derive(Resource)]
-struct ChunkMaterial(Handle<StandardMaterial>);
 
 fn setup_chunk_material(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let texture: Handle<Image> = asset_server.load("blocks.png");
+    commands.insert_resource(VoxelAtlas(TextureAtlasLayout::from_grid(
+        UVec2::splat(ATLAS_SIZE),
+        ATLAS_COLUMNS,
+        ATLAS_ROWS,
+        None,
+        None,
+    )));
+
+    let texture = asset_server.load("blocks.png");
+
     let material = materials.add(StandardMaterial {
         base_color_texture: Some(texture),
         perceptual_roughness: 0.9,
         reflectance: 0.1,
         ..default()
     });
+
     commands.insert_resource(ChunkMaterial(material));
 }
 
-const CHUNK_LOAD_RADIUS: i32 = 1;
-
-fn player_chunk_position(player: &Transform) -> ChunkPosition {
-    world_to_chunk_position(WorldPosition::new(
-        player.translation.x.floor() as i32,
-        0,
-        player.translation.z.floor() as i32,
-    ))
-}
-
-/// Ensures the chunk the player is in, and the 8 chunks around it, exist.
-/// Spawned chunks are only marked with `NeedsRemesh`; `remesh_chunks` meshes them.
 fn spawn_chunks_around_player(
     mut commands: Commands,
     mut world: ResMut<VoxelWorld>,
     material: Res<ChunkMaterial>,
     player: Single<&Transform, With<Player>>,
 ) {
-    let center = player_chunk_position(&player);
+    let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
 
     for dz in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
         for dx in -CHUNK_LOAD_RADIUS..=CHUNK_LOAD_RADIUS {
-            let position = ChunkPosition::new(center.x + dx, center.z + dz);
-            if world.is_loaded(position) {
+            let coord = ChunkCoord::new(center.x + dx, center.z + dz);
+
+            if world.is_loaded(coord) {
                 continue;
             }
 
-            let entity = world.spawn_chunk(&mut commands, position);
+            let entity = world.spawn_chunk(&mut commands, coord);
             commands.entity(entity).insert(MeshMaterial3d(material.0.clone()));
         }
     }
 }
 
-/// Marks chunks outside the player's 3x3 area with `NeedsDespawn`, and unmarks
-/// chunks that are back inside it. `despawn_retired_chunks` does the actual removal.
+fn generate_chunk(chunk: &mut ChunkData) {
+    for x in 0..CHUNK_WIDTH {
+        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
+
+        for z in 0..CHUNK_WIDTH {
+            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+            let height = (opensimplex2s::noise2d(0, world_x as f64 / 100.0, world_z as f64 / 100.0) * 10.0) as i32 + 20;
+            let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
+
+            // Top layer is grass
+            chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
+            // Two layers of dirt
+            for y in (height - 2).max(0)..height {
+                chunk[VoxelCoord::new(x, y, z)] = VoxelType::Dirt;
+            }
+            // Below that is stone
+            for y in 0..(height - 2).max(0) {
+                chunk[VoxelCoord::new(x, y, z)] = VoxelType::Stone;
+            }
+        }
+    }
+}
+
+fn remesh_chunks(
+    mut commands: Commands,
+    world: Res<VoxelWorld>,
+    atlas: Res<VoxelAtlas>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    chunks: Query<(Entity, &Chunk, Option<&Mesh3d>), With<NeedsRemesh>>,
+) {
+    for (entity, chunk, mesh3d) in &chunks {
+        let Some(data) = world.chunks.get(&chunk.coord) else {
+            continue;
+        };
+
+        let mesh = data.build_mesh(&world, &atlas.0);
+
+        match mesh3d {
+            Some(handle) => {
+                let _ = meshes.insert(&handle.0, mesh);
+            }
+            None => {
+                commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
+            }
+        }
+        commands.entity(entity).remove::<NeedsRemesh>();
+    }
+}
+
 fn retire_distant_chunks(
     mut commands: Commands,
     player: Single<&Transform, With<Player>>,
     chunks: Query<(Entity, &Chunk, Has<NeedsDespawn>)>,
 ) {
-    let center = player_chunk_position(&player);
+    let center = ChunkCoord::from_position(player.translation.x, player.translation.z);
 
     for (entity, chunk, retired) in &chunks {
-        let in_range = (chunk.position.x - center.x).abs() <= CHUNK_LOAD_RADIUS
-            && (chunk.position.z - center.z).abs() <= CHUNK_LOAD_RADIUS;
+        let in_range = (chunk.coord.x - center.x).abs() <= CHUNK_LOAD_RADIUS
+            && (chunk.coord.z - center.z).abs() <= CHUNK_LOAD_RADIUS;
 
         if !in_range && !retired {
             commands.entity(entity).insert(NeedsDespawn);
@@ -315,36 +715,48 @@ fn retire_distant_chunks(
     }
 }
 
-/// The game view only receives input while it has captured the cursor.
-fn game_view_captured(
-    editor_state: Res<EditorState>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
-) -> bool {
-    editor_state.is_game_view_active()
-        && editor_state.is_game_view_visible()
-        && cursor.grab_mode != CursorGrabMode::None
+fn despawn_retired_chunks(
+    mut commands: Commands,
+    mut world: ResMut<VoxelWorld>,
+    retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
+) {
+    for (entity, chunk) in &retired_chunks {
+        log::info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
+        // Keep the voxel data; only the entity goes away
+        if let Some(data) = world.chunks.get_mut(&chunk.coord) {
+            data.entity = None;
+        }
+
+        commands.entity(entity).despawn();
+    }
+}
+
+fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
+    cursor.grab_mode == CursorGrabMode::Locked
+}
+
+fn is_gamemode_survival(mode: Res<GameMode>) -> bool {
+    *mode == GameMode::Survival
+}
+
+fn is_gamemode_spectator(mode: Res<GameMode>) -> bool {
+    *mode == GameMode::Spectator
 }
 
 fn toggle_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    editor_state: Res<EditorState>,
-    window: Single<&Window, With<PrimaryWindow>>,
+    egui_wants_input: Res<EguiWantsInput>,
     mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
-    // Release the cursor when escape is pressed, or when the game view is no longer the active tab
-    if keyboard.just_pressed(KeyCode::Escape)
-        || (cursor.grab_mode != CursorGrabMode::None
-            && !(editor_state.is_game_view_active() && editor_state.is_game_view_visible()))
-    {
+    // Release the cursor when escape is pressed
+    if keyboard.just_pressed(KeyCode::Escape) {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     }
-
-    // Capture only when clicking inside the game view
-    if mouse.just_pressed(MouseButton::Left)
-        && editor_state.is_game_view_active()
-        && window.cursor_position().is_some_and(|position| editor_state.game_view_contains(position))
+    // Recapture when a click occurs outside egui
+    else if mouse.just_pressed(MouseButton::Left)
+        && !egui_wants_input.wants_pointer_input()
     {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
@@ -353,335 +765,185 @@ fn toggle_cursor(
 
 fn toggle_gamemode(
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut mode: ResMut<GameMode>,
     mut player: Single<&mut Player>,
+    mut mode: ResMut<GameMode>,
 ) {
-    if !keyboard.just_pressed(KeyCode::KeyF) {
-        return;
+    if keyboard.just_pressed(KeyCode::KeyF) {
+        *mode = match *mode {
+            GameMode::Survival => GameMode::Spectator,
+            GameMode::Spectator => GameMode::Survival,
+        };
+        // Don't retain old vertical momentum
+        player.velocity = Vec3::ZERO;
     }
-
-    *mode = match *mode {
-        GameMode::Survival => GameMode::Spectator,
-        GameMode::Spectator => GameMode::Survival,
-    };
-
-    // Don't retain old vertical momentum
-    player.velocity = Vec3::ZERO;
 }
 
 fn player_look(
     settings: Res<CameraSettings>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
-    mut player: Single<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
+    mouse: Res<AccumulatedMouseMotion>,
     mut camera: Single<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
+    mut player: Single<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
 ) {
-    // Don't move the camera if app is unfocused
-    if cursor.grab_mode == CursorGrabMode::None {
-        return;
-    }
+    let delta = mouse.delta;
 
-    let delta = mouse_motion.delta;
+    if delta != Vec2::ZERO {
+        // Horizontal movement rotates the entire player around the world Y axis
+        player.rotate_y(-delta.x * settings.mouse_sensitivity);
+        // Vertical movement rotates only the camera around its local X axis
+        let (yaw, mut pitch, roll) = camera.rotation.to_euler(EulerRot::YXZ);
 
-    if delta == Vec2::ZERO {
-        return;
-    }
+        pitch -= delta.y * settings.mouse_sensitivity;
+        pitch = pitch.clamp(-MAX_PITCH, MAX_PITCH);
 
-    // Horizontal movement rotates the entire player around the world Y axis
-    player.rotate_y(-delta.x * settings.mouse_sensitivity);
-    // Vertical movement rotates only the camera around its local X axis
-    let (yaw, mut pitch, roll) = camera.rotation.to_euler(EulerRot::YXZ);
-
-    pitch -= delta.y * settings.mouse_sensitivity;
-    pitch = pitch.clamp(-MAX_PITCH, MAX_PITCH);
-
-    camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
-}
-
-/// Right mouse button orbits, middle mouse button pans and the scroll wheel zooms, all
-/// relative to the editor view. The cursor is never captured.
-fn editor_camera_input(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
-    mouse_scroll: Res<AccumulatedMouseScroll>,
-    editor_state: Res<EditorState>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    mut camera: Single<&mut PanOrbitCamera, With<EditorCamera>>,
-) {
-    let hovered = editor_state.is_editor_view_active()
-        && window
-            .cursor_position()
-            .is_some_and(|position| editor_state.editor_view_contains(position));
-
-    let zoom = if hovered {
-        match mouse_scroll.unit {
-            MouseScrollUnit::Line => mouse_scroll.delta.y * 150.0,
-            MouseScrollUnit::Pixel => mouse_scroll.delta.y,
-        }
-    } else {
-        0.0
-    };
-
-    let zoom_finished = camera.current_motion.is_zooming_only()
-        && camera
-            .current_motion
-            .inputs()
-            .is_some_and(|inputs| inputs.zoom_velocity_abs(camera.smoothing.zoom.mul_f32(2.0)) <= 0.0);
-    if zoom_finished || mouse.any_just_released([MouseButton::Right, MouseButton::Middle]) {
-        camera.end_move();
-    }
-
-    if hovered {
-        if mouse.just_pressed(MouseButton::Right) {
-            camera.start_orbit(None);
-        } else if mouse.just_pressed(MouseButton::Middle) {
-            camera.start_pan(None);
-        } else if zoom != 0.0 && !camera.current_motion.is_user_controlled() {
-            camera.start_zoom(None);
-        }
-    }
-
-    let dragging = mouse.any_pressed([MouseButton::Right, MouseButton::Middle]);
-    camera.send_screenspace_input(if dragging { mouse_motion.delta } else { Vec2::ZERO });
-    camera.send_zoom_input(zoom);
-}
-
-fn player_move(
-    time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mode: Res<GameMode>,
-    settings: Res<CameraSettings>,
-    world: Res<VoxelWorld>,
-    player: Single<(&mut Transform, &mut Player)>,
-    cursor: Single<&CursorOptions, With<PrimaryWindow>>,
-) {
-    let (mut transform, mut player) = player.into_inner();
-
-    // Ignore keys while the game view hasn't captured the cursor
-    let no_input = ButtonInput::<KeyCode>::default();
-    let keyboard = if cursor.grab_mode == CursorGrabMode::None { &no_input } else { &*keyboard };
-
-    let mut movement = Vec3::ZERO;
-
-    if keyboard.pressed(KeyCode::KeyW) {
-        movement += *transform.forward();
-    }
-    if keyboard.pressed(KeyCode::KeyS) {
-        movement += *transform.back();
-    }
-    if keyboard.pressed(KeyCode::KeyA) {
-        movement += *transform.left();
-    }
-    if keyboard.pressed(KeyCode::KeyD) {
-        movement += *transform.right();
-    }
-
-    let movement = movement.normalize_or_zero();
-
-    match *mode {
-        GameMode::Survival => {
-            move_survival(
-                &mut transform,
-                &mut player,
-                movement,
-                &settings,
-                &keyboard,
-                &world,
-                time.delta_secs(),
-            );
-        }
-        GameMode::Spectator => {
-            move_spectator(
-                &mut transform,
-                &mut player,
-                movement,
-                &settings,
-                &keyboard,
-                time.delta_secs(),
-            );
-        }
+        camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
     }
 }
 
 fn move_spectator(
-    transform: &mut Transform,
-    player: &mut Player,
-    mut movement: Vec3,
-    settings: &CameraSettings,
-    keyboard: &ButtonInput<KeyCode>,
-    dt: f32,
+    time: Res<Time>,
+    settings: Res<CameraSettings>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    player: Single<(&mut Transform, &mut Player)>,
 ) {
+    let (mut transform, mut player) = player.into_inner();
+
     player.velocity = Vec3::ZERO;
     player.grounded = false;
 
-    if keyboard.pressed(KeyCode::Space) {
-        movement.y += 1.0;
-    }
+    let delta = vec3(
+        f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA)),
+        f32::from(keyboard.pressed(KeyCode::Space)) - f32::from(keyboard.pressed(KeyCode::ShiftLeft)),
+        f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS)),
+    );
 
-    if keyboard.pressed(KeyCode::ShiftLeft) {
-        movement.y -= 1.0;
+    if delta != Vec3::ZERO {
+        let direction = delta.x * transform.right() + delta.y * Vec3::Y + delta.z * transform.forward();
+        transform.translation += settings.move_speed * time.delta_secs() * direction.normalize();
     }
-
-    transform.translation += movement.normalize_or_zero() * settings.move_speed * dt;
 }
 
 fn move_survival(
-    transform: &mut Transform,
-    player: &mut Player,
-    movement: Vec3,
-    settings: &CameraSettings,
-    keyboard: &ButtonInput<KeyCode>,
-    world: &VoxelWorld,
-    dt: f32,
+    settings: Res<CameraSettings>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    player: Single<(&mut Player, &Transform)>,
 ) {
-    player.velocity.x = movement.x * settings.move_speed;
-    player.velocity.z = movement.z * settings.move_speed;
+    let (mut player, transform) = player.into_inner();
+
+    let dx = f32::from(keyboard.pressed(KeyCode::KeyD)) - f32::from(keyboard.pressed(KeyCode::KeyA));
+    let dz = f32::from(keyboard.pressed(KeyCode::KeyW)) - f32::from(keyboard.pressed(KeyCode::KeyS));
+
+    if dx != 0.0 || dz != 0.0 {
+        let movement = dx * transform.right() + dz * transform.forward();
+        let movement = movement.normalize_or_zero();
+        player.velocity.x = movement.x * settings.move_speed;
+        player.velocity.z = movement.z * settings.move_speed;
+    } else {
+        player.velocity.x = 0.0;
+        player.velocity.z = 0.0;
+    }
 
     if player.grounded && keyboard.just_pressed(KeyCode::Space) {
         player.velocity.y = settings.jump_strenght;
         player.grounded = false;
     }
+}
+
+fn player_physics(
+    time: Res<Time>,
+    world: Res<VoxelWorld>,
+    player: Single<(&mut Player, &mut Transform)>,
+) {
+    let (mut player, mut transform) = player.into_inner();
+    let dt = time.delta_secs();
 
     player.velocity.y -= GRAVITY * dt;
-
-    move_with_collisions(&mut transform.translation, player, world, dt);
-}
-
-fn move_with_collisions(position: &mut Vec3, player: &mut Player, world: &VoxelWorld, dt: f32) {
     player.grounded = false;
-    move_x(position, &mut player.velocity, world, dt);
-    move_y(position, &mut player.velocity, &mut player.grounded, world, dt);
-    move_z(position, &mut player.velocity, world, dt);
+
+    for axis in [Axis::X, Axis::Y, Axis::Z] {
+        move_axis(
+            &mut player,
+            &mut transform.translation,
+            &world,
+            dt,
+            axis,
+        );
+    }
 }
 
-fn move_y(
+fn move_axis(
+    player: &mut Player,
     position: &mut Vec3,
-    velocity: &mut Vec3,
-    grounded: &mut bool,
     world: &VoxelWorld,
     dt: f32,
+    axis: Axis,
 ) {
-    if velocity.y == 0.0 {
+    let velocity = Axis::get(axis, player.velocity);
+
+    if velocity == 0.0 {
         return;
     }
 
-    position.y += velocity.y * dt;
+    let axis_position = Axis::get(axis, *position) + velocity * dt;
+    Axis::set(axis, position, axis_position);
 
-    let min_x = (position.x - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_x = (position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
-    let min_z = (position.z - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_z = (position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
+    let min = Vec3::new(
+        position.x - PLAYER_WIDTH_HALF,
+        position.y,
+        position.z - PLAYER_WIDTH_HALF,
+    );
+    let max = Vec3::new(
+        position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+        position.y + PLAYER_HEIGHT - COLLISION_EPSILON,
+        position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+    );
 
-    if velocity.y < 0.0 {
-        // Falling
-        let y = position.y.floor() as i32;
+    let min_x = min.x.floor() as i32;
+    let max_x = max.x.floor() as i32;
+    let min_y = min.y.floor() as i32;
+    let max_y = max.y.floor() as i32;
+    let min_z = min.z.floor() as i32;
+    let max_z = max.z.floor() as i32;
 
-        for x in min_x..=max_x {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(x, y, z)) {
-                    position.y = y as f32 + 1.0;
-                    velocity.y = 0.0;
-                    *grounded = true;
-                    return;
+    // Find the voxel coordinate of the leading face
+    let edge = match (axis, velocity > 0.0) {
+        (Axis::X, true)  => position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+        (Axis::X, false) => position.x - PLAYER_WIDTH_HALF,
+        (Axis::Y, true)  => position.y + PLAYER_HEIGHT - COLLISION_EPSILON,
+        (Axis::Y, false) => position.y,
+        (Axis::Z, true)  => position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON,
+        (Axis::Z, false) => position.z - PLAYER_WIDTH_HALF,
+    };
+
+    let edge = edge.floor() as i32;
+
+    let (x_range, y_range, z_range) = match axis {
+        Axis::X => (edge..=edge,   min_y..=max_y, min_z..=max_z),
+        Axis::Y => (min_x..=max_x, edge..=edge,   min_z..=max_z),
+        Axis::Z => (min_x..=max_x, min_y..=max_y, edge..=edge),
+    };
+
+    for z in z_range {
+        for y in y_range.clone() {
+            for x in x_range.clone() {
+                if !world.is_solid(WorldCoord::new(x, y, z)) {
+                    continue;
                 }
-            }
-        }
-    } else {
-        // Jumping
-        let top = position.y + PLAYER_HEIGHT;
-        let y = (top - COLLISION_EPSILON).floor() as i32;
 
-        for x in min_x..=max_x {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(x, y, z)) {
-                    position.y = y as f32 - PLAYER_HEIGHT;
-                    velocity.y = 0.0;
-                    return;
-                }
-            }
-        }
-    }
-}
+                let resolved = match (axis, velocity > 0.0) {
+                    (Axis::X, true)  => x as f32 - PLAYER_WIDTH_HALF,
+                    (Axis::X, false) => x as f32 + 1.0 + PLAYER_WIDTH_HALF,
+                    (Axis::Y, true)  => y as f32 - PLAYER_HEIGHT,
+                    (Axis::Y, false) => {
+                        player.grounded = true;
+                        y as f32 + 1.0
+                    }
+                    (Axis::Z, true)  => z as f32 - PLAYER_WIDTH_HALF,
+                    (Axis::Z, false) => z as f32 + 1.0 + PLAYER_WIDTH_HALF,
+                };
 
-fn move_x(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32) {
-    if velocity.x == 0.0 {
-        return;
-    }
-
-    position.x += velocity.x * dt;
-
-    let min_y = position.y.floor() as i32;
-    let max_y = (position.y + PLAYER_HEIGHT - COLLISION_EPSILON).floor() as i32;
-    let min_z = (position.z - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_z = (position.z + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
-
-    if velocity.x > 0.0 {
-        let right = position.x + PLAYER_WIDTH_HALF;
-        let x = (right - COLLISION_EPSILON).floor() as i32;
-
-        for y in min_y..=max_y {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(x, y, z)) {
-                    position.x = x as f32 - PLAYER_WIDTH_HALF;
-                    velocity.x = 0.0;
-                    return;
-                }
-            }
-        }
-    } else {
-        let left = position.x - PLAYER_WIDTH_HALF;
-        let x = left.floor() as i32;
-
-        for y in min_y..=max_y {
-            for z in min_z..=max_z {
-                if world.is_solid(WorldPosition::new(x, y, z)) {
-                    position.x = x as f32 + 1.0 + PLAYER_WIDTH_HALF;
-                    velocity.x = 0.0;
-                    return;
-                }
-            }
-        }
-    }
-}
-
-fn move_z(position: &mut Vec3, velocity: &mut Vec3, world: &VoxelWorld, dt: f32) {
-    if velocity.z == 0.0 {
-        return;
-    }
-
-    position.z += velocity.z * dt;
-
-    let min_x = (position.x - PLAYER_WIDTH_HALF).floor() as i32;
-    let max_x = (position.x + PLAYER_WIDTH_HALF - COLLISION_EPSILON).floor() as i32;
-    let min_y = position.y.floor() as i32;
-    let max_y = (position.y + PLAYER_HEIGHT - COLLISION_EPSILON).floor() as i32;
-
-    if velocity.z > 0.0 {
-        let front = position.z + PLAYER_WIDTH_HALF;
-        let z = (front - COLLISION_EPSILON).floor() as i32;
-
-        for x in min_x..=max_x {
-            for y in min_y..=max_y {
-                if world.is_solid(WorldPosition::new(x, y, z)) {
-                    // Put the player's front edge against the voxel
-                    position.z = z as f32 - PLAYER_WIDTH_HALF;
-                    velocity.z = 0.0;
-                    return;
-                }
-            }
-        }
-    } else {
-        let back = position.z - PLAYER_WIDTH_HALF;
-        let z = back.floor() as i32;
-
-        for x in min_x..=max_x {
-            for y in min_y..=max_y {
-                if world.is_solid(WorldPosition::new(x, y, z)) {
-                    // Put the player's back edge against the voxel
-                    position.z = z as f32 + 1.0 + PLAYER_WIDTH_HALF;
-                    velocity.z = 0.0;
-                    return;
-                }
+                Axis::set(axis, position, resolved);
+                Axis::set(axis, &mut player.velocity, 0.0);
+                return;
             }
         }
     }
@@ -700,9 +962,8 @@ fn draw_selected_voxel(
         return;
     };
 
-    let origin = hit.position.origin();
-    let face = Face::new(origin, hit.face);
-    let vertices = face.vertices();
+    let origin = hit.coord.position();
+    let vertices = MeshData::quad_vertices(hit.direction, origin);
 
     gizmos.line(vertices[0], vertices[1], Color::WHITE);
     gizmos.line(vertices[1], vertices[3], Color::WHITE);
@@ -725,13 +986,13 @@ fn break_place_block(
     let origin = camera.translation();
     let direction = camera.forward();
 
-    if let Some(VoxelHit { position, face }) = find_voxel(&world, origin, *direction) {
-        info!("Hit {:?} at {:?} face", position, face);
+    if let Some(VoxelHit { coord, direction }) = find_voxel(&world, origin, *direction) {
+        info!("Hit {:?} at {:?}", coord, direction);
         if do_break {
-            world.set_voxel(&mut commands, position, VoxelType::Air);
+            world.set_voxel(&mut commands, coord, VoxelType::Air);
         } else /* if do_place */ {
-            let neighbor = position.neighbor(face);
-            world.set_voxel(&mut commands, neighbor, VoxelType::Stone);
+            let neighbor = coord.shift(direction);
+            world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
         }
     }
 }
@@ -776,51 +1037,50 @@ fn find_voxel(world: &VoxelWorld, origin: Vec3, direction: Vec3) -> Option<Voxel
             let distance = max_x;
             max_x += delta_x;
 
-            let face = if step_x > 0 {
-                FaceDirection::Left
+            let direction = if step_x > 0 {
+                Direction::Left
             } else {
-                FaceDirection::Right
+                Direction::Right
             };
 
-            (distance, face)
+            (distance, direction)
         } else if max_y <= max_z {
             y += step_y;
 
             let distance = max_y;
             max_y += delta_y;
 
-            let face = if step_y > 0 {
-                FaceDirection::Bottom
+            let direction = if step_y > 0 {
+                Direction::Bottom
             } else {
-                FaceDirection::Top
+                Direction::Top
             };
 
-            (distance, face)
+            (distance, direction)
         } else {
             z += step_z;
 
             let distance = max_z;
             max_z += delta_z;
 
-            let face = if step_z > 0 {
-                FaceDirection::Back
+            let direction = if step_z > 0 {
+                Direction::Back
             } else {
-                FaceDirection::Front
+                Direction::Front
             };
 
-            (distance, face)
+            (distance, direction)
         };
 
         if distance > INTERACTION_DISTANCE {
             return None;
         }
 
-        let position = WorldPosition::new(x, y, z);
-
-        if world.is_solid(position) {
+        let coord = WorldCoord::new(x, y, z);
+        if world.is_solid(coord) {
             return Some(VoxelHit {
-                position,
-                face,
+                coord,
+                direction: face,
             });
         }
     }

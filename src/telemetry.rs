@@ -1,7 +1,15 @@
 use std::net::SocketAddr;
 
-use axum::{Router, extract::{State, WebSocketUpgrade, ws::{Message, WebSocket}}, response::{Html, Response}, routing};
-use bevy::{diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin}, prelude::*};
+use axum::{
+    Router,
+    extract::{State, WebSocketUpgrade, ws::{Message, WebSocket}},
+    response::{Html, Response},
+    routing,
+};
+use bevy::{
+    prelude::*,
+    diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin},
+};
 use serde::Serialize;
 use tokio::sync::watch;
 
@@ -9,11 +17,30 @@ use tokio::sync::watch;
 #[derive(Resource)]
 pub struct TelemetryPublisher(pub watch::Sender<Telemetry>);
 
-#[derive(Clone, Default, Debug, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Telemetry {
     fps: f64,
     frame_time_ms: f64,
     entity_count: f64,
+}
+
+pub async fn run_server(receiver: watch::Receiver<Telemetry>) {
+    let app = Router::new()
+        .route("/", routing::get(index))
+        .route("/ws", routing::get(websocket))
+        .with_state(receiver);
+
+    let address = SocketAddr::from(([127, 0, 0, 1], 3000));
+
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .unwrap();
+
+    log::info!("Telemetry dashboard: http://{address}");
+
+    axum::serve(listener, app)
+        .await
+        .unwrap();
 }
 
 pub fn collect_telemetry(
@@ -60,23 +87,4 @@ async fn stream_telemetry(mut socket: WebSocket, mut receiver: watch::Receiver<T
             break;
         }
     }
-}
-
-pub async fn run_server(receiver: watch::Receiver<Telemetry>) {
-    let app = Router::new()
-        .route("/", routing::get(index))
-        .route("/ws", routing::get(websocket))
-        .with_state(receiver);
-
-    let address = SocketAddr::from(([127, 0, 0, 1], 3000));
-
-    let listener = tokio::net::TcpListener::bind(address)
-        .await
-        .expect("Could not bind telemetry server");
-
-    log::info!("Telemetry dashboard: http://{address}");
-
-    axum::serve(listener, app)
-        .await
-        .expect("Telemetry server failed");
 }
