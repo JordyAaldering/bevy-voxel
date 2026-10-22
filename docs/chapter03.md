@@ -66,10 +66,6 @@ A square has four corners, but because we can only make triangles, we need to sp
 However, these two triangles share two vertices, meaning we only need four vertices.
 In the previous example, that would mean adding a fourth vertex $v_3 = (1, 1)$ and extending the indices to `[0, 2, 1, 1, 2, 3]`.
 
-Before we get to chunks, let's start with a single cube and build its mesh ourselves.
-Along the way, we'll explore how meshes work in general.
-The concepts apply to all kinds of geometry, not just voxels.
-
 ## Winding order
 
 The order in which we create a triangle matters.
@@ -83,7 +79,7 @@ However, that means we need to be careful about the order in which we create tri
 
 By default, Bevy uses a [counter-clockwise](https://docs.rs/bevy/latest/bevy/mesh/struct.Mesh.html) winding order.
 That means the example from before would be invisible, because the triangle is facing the wrong way.
-Instead, we should create the cube from the indices `[0, 1, 2, 2, 1, 3]`.
+Instead, we should create the square from the indices `[0, 1, 2, 2, 1, 3]`.
 
 ---
 
