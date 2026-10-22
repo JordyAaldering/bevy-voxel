@@ -4,8 +4,8 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
-const MOVE_SPEED: f32 = 1.0;
-const MOUSE_SENSITIVITY: f32 = 0.001;
+const MOVE_SPEED: f32 = 5.0;
+const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 fn main() -> AppExit {
     App::new()

@@ -94,88 +94,129 @@ Pick whichever you prefer.
 
 ## Looking around
 
-Now that we can capture the mouse, let's use it to look around.
-We'll add two systems: `player_look` and `player_move`.
-We'll start with the former.
+Before we can start adjusting position and rotations, we need to understand Bevy's [coordinate system](https://bevy-cheatbook.github.io/fundamentals/coords.html).
+Bevy uses a right-handed coordinate system.
+You can visualize the axes by sticking out your right hand's thumb, index, and middle fingers perpendicular to each other.
+The thumb points in the positive X direction, the index finger points in the positive Y direction, and the middle finger points in the positive Z direction.
 
+![](https://bevy-cheatbook.github.io/img/handedness.png)
+
+Finally, we can create the system for looking around.
+This system needs to know how much the mouse has moved, and then rotate the camera's transform accordingly.
 Bevy provides an `AccumulatedMouseMotion` resource containing the mouse movement accumulated during the current frame.
-We can use its horizontal and vertical deltas to rotate the camera.
+We don't actually care about the camera itself, but rather its transform: `Single<&mut Transform, With<Camera3d>>`.
 
-To access the camera, we use `Single<&mut Transform, With<Camera3d>>`, rather than `Single<&mut Camera3d>`.
-We want to change the camera's position and rotation, which are stored in its `Transform`, not the `Camera3d` component itself.
+### Horizontal rotation
 
-Start by rotating the camera around the Y-axis using `rotate_y`.
-When the mouse moves to the right, its horizontal delta is positive, but we need to negate that delta to make the camera look to the right.
-This is because a camera looks along its local negative Z-axis, so the positive rotation around Y turns its forward direction towards the left.
+Stick out your right hand again and pretend it is the camera.
+(Index finger pointing up and middle finger pointing towards yourself.)
+Now, 'look' left and right with your hand.
+You will notice that your thumb (x) and middle finger (z) rotate, whilst your index finger (y) remains pointing up.
+Thus, if we want to look left and right, we need to rotate around the y-axis: `Transform::rotate_y`, using the accumulated mouse motion's horizontal (x) delta.
 
-We also multiply the delta by a `MOUSE_SENSITIVITY` constant to control how quickly the camera rotates.
+However, remember that the z-axis points towards yourself.
+The camera looks forward, i.e. along the **negative** z-axis.
+This means our direction of rotation is inverted, so we negate the mouse motion's delta before applying it to the camera's rotation.
 
-Try implementing this and see how it feels.
-Adjust the sensitivity until the movement is comfortable.
+Directly using the mouse delta rotate the camera much too quickly, so we need to scale it down by multiplying it with some constant `MOUSE_SENSITIVITY`.
 
-Next, apply the vertical mouse delta using `rotate_x`.
-If you try this, you'll notice that looking up and down can cause the camera to roll.
-How much it rolls depends on the camera's current orientation.
+### Vertical rotation
 
-The problem is that `rotate_x` rotates around the X-axis relative to the parent, or the world if there is no parent.
-We want to pitch the camera around its own local X-axis instead.
-For horizontal rotation, the world Y-axis is appropriate because we want to turn around the world's vertical axis.
-For vertical rotation, however, we want to rotate relative to the camera's orientation.
+Use the hand trick again to figure out which axis to rotate around when looking up and down.
 
-Use `rotate_local_x` instead of `rotate_x`.
-This makes the vertical rotation relative to the camera's local X-axis, preventing the unwanted rolling.
+If you try to run the game now, you'll notice that looking up and down can cause the camera to roll.
+The problem is that we are rotating around the world's axes.
+For horizontal rotation this is not a problem, because the player is always upright.
+However, the players horizontal orientation is different from the world, meaning that rotating around the world's horizontal axis will cause the camera to roll when looking up and down.
+We want to rotate relative to the camera's orientation: `rotate_local`.
 
 ## Moving around
 
-Let's implement `player_move` next.
-Unlike `player_look`, this system needs keyboard input and the camera's transform.
-It also needs a `Time` resource.
+For the movement system we again need the camera's transform.
+Of course, we now need the keyboard input rather than the mouse input.
 
-Why? We want movement speed to be independent of the frame rate.
-If we move the camera by a fixed amount every frame, it will move faster on machines that render more frames per second.
-Multiplying the movement by `time.delta_secs()` ensures that movement is proportional to the time elapsed since the previous frame.
-
-The camera's position can then be updated like this:
-
-```rust
-camera.translation += MOVE_SPEED * time.delta_secs() * todo!();
-```
-
-The missing piece is the movement direction.
-One approach is to start with a mutable `Vec3` and add a direction for every key that is pressed.
-For example:
+We check if a key is pressed with `ButtonInput::pressed(KeyCode)`.
+Because multiple keys can be pressed at the same time, we need to check all movement keys (W, A, S, D, Space, Shift) separately.
+The easiest way is to define a `mut movement: Vec3` and add a direction for every key that is pressed.
+(It is possible to do this without any if-statements, can you figure out how?)
 
 ```rust
 if keyboard.pressed(KeyCode::KeyW) {
-    delta -= Vec3::Z;
+    movement += Vec3::Z;
 }
 ```
 
-Repeat this for the other movement keys: A, S, D, Space, and Shift.
+Can you spot the mistake in the above code snippet?
+If you use the hand trick again, you'll notice that your middle finger (z) points towards yourself (back).
+When we press W, we want to move forward, i.e. away from ourselves.
+Thus, we need to subtract the z-axis rather than add it.
 
-Try it out.
-You'll notice that moving forward always moves the camera along the world's Z-axis, regardless of which way you're looking.
-That's not what we want.
-As with camera rotation, we need to distinguish between world-space and local-space directions.
+> Remember the hand trick! It comes in handy often.
 
-Fortunately, Bevy provides methods such as `camera.forward()` that return the camera's direction in world space.
-Instead of adding `-Vec3::Z` when W is pressed, add `camera.forward()`.
-Apply the same idea to the other horizontal directions using the camera's right vector.
+Modify `movement` for the other keys as well.
+Then, we can update the camera's position by adding the movement delta to the camera's translation.
 
-For vertical movement, we can continue to use the world's Y-axis.
-Pressing Space should move us up, and Shift should move us down, regardless of the camera's orientation.
+```rust
+camera.translation += movement;
+```
 
-There's one more issue.
-If you move diagonally, you'll notice that the camera moves faster than when moving in a single direction.
-This happens because combining two perpendicular directions produces a vector with a length of \(\sqrt{2}\), rather than \(1\).
+If you try this out, you might notice several issues.
 
-We can fix this by normalizing the movement vector with `delta.normalize()`.
-This gives us a vector of length 1, preserving the movement speed regardless of direction.
-However, only normalize the vector if it isn't zero; otherwise, you'll end up with an invalid vector.
+- The camera moves too slow, and at an inconsistent speed, and
+- movement is not relative to the camera's rotation.
 
-You don't need to use a bunch of `if` statements to construct the movement vector.
-You can also derive a `Vec3` directly from the keyboard input.
-The important part is understanding how the movement direction is determined and why it needs to be normalized.
+### Movement speed
+
+Like with looking, using the raw input for movement is likely too slow or too fast.
+Again, we'll simply define a constant `MOVE_SPEED` and multiply the movement delta by it.
+
+The movement input is a three-element vector.
+Each element is either $1$, $0$, or $-1$, depending on which movement keys are pressed.
+For example, $(1, 0, 0)$ when moving right or $(0, 1, 0)$ when moving up.
+That means, if we are moving both right and up, the movement delta will be $(1, 1, 0)$.
+This means the camera moves $\sqrt{2}$ times faster when moving diagonally.
+
+The solution is simple: we _normalize_ the input.
+Normalizing a vector means that the length of the vector is scaled to 1, keeping the ratio between elements.
+For example, $(0.5, 0, 0)$ and $(3.7, 0, 0)$ both normalize to $(1, 0, 0)$.
+$(2, 2, 1)$ normalizes to $(\frac{2}{3}, \frac{2}{3}, \frac{1}{3})$: the first two elements are equal, and the third is half of that, but the total length of the vector is now 1.
+Normalization is not possible for the zero vector, so either check if `movement != Vec3::ZERO` or use `normalize_or_zero`.
+
+There is one more subtle issue: the movement speed is dependent on the frame rate.
+You might have seen this behaviour in other games, especially ones that were designed for older consoles.
+
+A game that comes to mind for me is GTA San Andreas.
+If you run the desktop version with an uncapped frame rate, weird things start to happen.
+You'll swim much slower, mission timers count down much faster, and cars will start to 'dance'.
+Many games in this era were specifically designed for consoles, where the game would typically run at a predictable frame rate.
+However, desktop hardware is infinitely more variable, causing weird behaviour when systems are tied to the frame rate.
+
+We solve this by scaling time-dependent systems by the time elapsed since the previous frame.
+If we move 10 units per second, and we have 5 frames per second, that means for each of those frames we should move $10 / 5 = 2$ units.
+If in the next second our frame rate increases to 20 FPS, we should move $10 / 20 = 0.5$ units per frame.
+
+> Alternatively, this is where the `FixedUpdate` schedule comes into play. It runs at a fixed time interval, typically slower than the frame rate, and it therefore typically used for time-dependent and compute-intensive systems like physics.
+
+In Bevy, the time elapsed since the previous frame is stored in the `Time` resource.
+We access it with `Time::delta_secs()`, which we multiply with the movement delta to make it independent of the frame rate.
+
+### Relative movement
+
+Moving forward always moves the camera along the world's z-axis, regardless of which way the camera is looking.
+Similarly to looking, we want to move relative to the camera's orientation.
+
+`Vec3::X` and `Vec3::Z` are the world's axes, but how do we modify these to move relative to the camera's rotation instead?
+Whenever the player is rotated exactly 90 degrees to the right, moving forward ($-z$) actually means moving along the world's x-axis ($(0, 0, -1)$ becomes $(1, 0, 0)$).
+If the player rotated only halfway, 45 degrees, the orientation becomes a combination: $(\frac{\sqrt{2}}{2}, 0, \frac{\sqrt{2}}{2})$.
+Crucially, the direction itself becomes a vector, rather than a single axis.
+
+Luckily, we don't need to do any of this maths ourselves.
+We use `Transform::forward` to get the camera's forward-facing vector in world space.
+Thus, instead of moving along `Vec3::X` and `Vec3::Z`, we move along `Transform::right` and `Transform::forward`.
+
+The player is always upright, so moving up and down should not depend on the rotation of the camera.
+(If we are looking straight down, pressing space should still move us up, not forward.)
+We leave the vertical movement unchanged.
 
 ## Run conditions
 

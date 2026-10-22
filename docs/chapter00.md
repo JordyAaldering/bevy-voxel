@@ -27,4 +27,4 @@ The aim is not to leave you with a working project.
 Rather, I deliberately won't give complete code snippets.
 That means more effort is required from your side, but ultimately it should teach you actual understanding of your code.
 
-> Note: This guide is still a hot piece of garbage. As a placeholder some text is AI generated (it's better than nothing), so be aware that information may be incorrect. Please star the repository if you find this guide useful, so I know to spend time on the writing.
+> Note: This guide is still a hot piece of garbage. As a placeholder some text is AI generated (it's better than nothing), so be aware that information may be incorrect. Please star the repository if you find this guide useful, so I know to spend time on the writing. So far, only chapter 1 is fully written.
