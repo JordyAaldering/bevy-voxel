@@ -1,4 +1,4 @@
-# The first voxel
+# Setting the scene
 
 Before we can start working with voxels, we need a basic Bevy project.
 Bevy makes breaking API changes approximately every three months, so follow the [quick start](https://bevy.org/learn/quick-start) to get your project up and running.

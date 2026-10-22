@@ -1,4 +1,4 @@
-# Creating a voxel mesh
+# Our first mesh
 
 I hope you're warmed up, because this is where the real work starts.
 In this chapter we are going to manually generate the mesh for a voxel, rather than using Bevy's built-in `Cuboid` primitive.

@@ -34,9 +34,9 @@ In particular, the _Entity Component System_ (ECS) is an important concept, as i
 
 ## Chapters
 
-- [The first voxel](docs/chapter01.md)
-- [Inspecting settings with egui](docs/chapter02.md)
-- [Creating a voxel mesh](docs/chapter03.md)
+- [Setting the scene](docs/chapter01.md)
+- [Inspecting settings](docs/chapter02.md)
+- [Our first mesh](docs/chapter03.md)
 - [Creating a chunk](docs/chapter04.md)
 - [Multiple chunks](docs/chapter05.md)
 - [Multiple voxel types](docs/chapter06.md)

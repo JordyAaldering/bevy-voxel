@@ -1,4 +1,4 @@
-# Inspecting settings with egui
+# Inspecting settings
 
 In the previous chapter, we used constants for the camera's movement speed and mouse sensitivity.
 Want to change either value, then you have to edit the code and recompile.
