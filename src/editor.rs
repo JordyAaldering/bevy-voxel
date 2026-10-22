@@ -1,7 +1,21 @@
-use bevy::{camera::RenderTarget, image::Image, prelude::*, render::render_resource::{Extent3d, TextureFormat}, window::PrimaryWindow};
-use bevy_inspector_egui::{bevy_egui::{EguiContext, EguiTextureHandle, EguiUserTextures, PrimaryEguiContext}, bevy_inspector::{self, hierarchy::{SelectedEntities, hierarchy_ui}, ui_for_entities_shared_components, ui_for_entity_with_children}};
-use egui_dock::{DockArea, DockState, NodeIndex, Style, egui};
 use std::any::TypeId;
+
+use bevy::{
+    prelude::*,
+    camera::RenderTarget,
+    image::Image,
+    render::render_resource::{Extent3d, TextureFormat},
+    window::PrimaryWindow,
+};
+use bevy_inspector_egui::{
+    bevy_egui::{EguiContext, EguiTextureHandle, EguiUserTextures, PrimaryEguiContext},
+    bevy_inspector::{
+        self,
+        hierarchy::{SelectedEntities, hierarchy_ui},
+        ui_for_entities_shared_components,
+        ui_for_entity_with_children,
+}};
+use egui_dock::{DockArea, DockState, NodeIndex, Style, egui};
 
 #[derive(Clone, Copy, Debug)]
 pub enum EditorTab {
@@ -239,10 +253,6 @@ pub fn show_editor(world: &mut World) {
     );
 }
 
-pub fn is_game_view_visible(editor_state: Res<EditorState>) -> bool {
-    editor_state.game_view.rect.is_some()
-}
-
 pub fn is_editor_view_visible(editor_state: Res<EditorState>) -> bool {
     editor_state.editor_view.rect.is_some()
 }
@@ -305,9 +315,14 @@ fn update_view_target(
     };
 
     camera.is_active = true;
+
     if let Some(mut image) = images.get_mut(&view.image) {
         if image.size() != size {
-            image.resize(Extent3d { width: size.x, height: size.y, depth_or_array_layers: 1 });
+            image.resize(Extent3d {
+                width: size.x,
+                height: size.y,
+                depth_or_array_layers: 1,
+            });
         }
     }
 }

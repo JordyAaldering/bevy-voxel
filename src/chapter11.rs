@@ -536,6 +536,8 @@ fn main() -> AppExit {
         .init_resource::<VoxelWorld>()
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
+        .init_resource::<DebugGizmos>()
+        .register_type::<DebugGizmos>()
         .insert_resource(TelemetryPublisher(sender))
         .add_systems(Startup, (
             setup_chunk_material,
@@ -589,6 +591,7 @@ fn spawn_player(mut commands: Commands) {
             Name::new("Player"),
             Player::default(),
             Transform::from_xyz(1.5, world_height as f32 + 1.0, 1.5),
+            InheritedVisibility::default(),
         ))
         .with_children(|commands| {
             commands.spawn((
