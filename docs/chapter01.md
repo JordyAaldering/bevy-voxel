@@ -6,9 +6,11 @@ Make sure you correctly configure your Cargo configuration, you don't want to sp
 
 Bevy uses _schedules_ to determine when systems run.
 The most common ones are `Startup`, `Update`, and `FixedUpdate`.
+
 - `Startup` runs once when the app starts,
 - `Update` runs every frame, and
 - `FixedUpdate` runs at a fixed time interval, which is useful for things like physics.
+
 Bevy also provides `Pre` and `Post` schedules for additional control, and plugins can also introduce their own schedules.
 The order in which systems run can be a source of bugs, especially when systems depend on one another.
 When your project gets more complicated, think carefully about the ordering of systems.
@@ -19,7 +21,7 @@ We can't do anything before we can look and move around in our world.
 We start with a simple scene, containing a camera that we can move around, a pre-defined Bevy voxel, and a global light so we can actually see something.
 
 The modern approach for spawning a scene in Bevy is with the [Bevy Scene Notation](https://taintedcoders.com/bevy/bsn).
-The scene we'll be creating is very simple, so you can also just create a system for spawning each entity that spawns each entity with `Commands::spawn`.
+The scene we'll be creating is very simple, so you can also just create a system for spawning each entity with `Commands::spawn`.
 Whichever you choose, create a function for spawning the camera, the directional light, and the voxel.
 
 ### The camera
@@ -59,25 +61,36 @@ You should see a voxel in the middle of the screen.
 
 ## Cursor locking
 
-To look around with the mouse, we don't want the cursor to leave the game window.
-Let's implement a system that locks and hides the cursor when the left mouse button is pressed, and unlocks and shows it when Escape is pressed.
+When looking around, we don't want the cursor to leave the game window.
+Before we implement looking, we need to lock the cursor to the window when we click inside it.
+When the escape key is pressed, we want to unlock the cursor and show it again.
 
-We'll call this system `toggle_cursor`.
-It needs three parameters:
-- `ButtonInput<KeyCode>` to check whether Escape is pressed.
-- `ButtonInput<MouseButton>` to check whether the left mouse button is pressed.
+This system requires three arguments:
+
+- `ButtonInput<KeyCode>` to check whether a certain key is pressed,
+- `ButtonInput<MouseButton>` to check whether a mouse button is pressed, and
 - `Single<&mut CursorOptions, With<PrimaryWindow>>` to access the cursor settings of the primary window.
 
-`Single` lets us access a component on an entity when we expect exactly one matching entity.
-Here, `With<PrimaryWindow>` ensures we get the cursor settings for the primary window, even if the app has multiple windows.
-Since `CursorOptions` is mutable, we can change its grab mode and visibility.
+`Single` lets us access a component on an entity when we expect exactly one matching entity in the entire game.
+We use `With<PrimaryWindow>` to ensure that we only get the cursor settings for the primary window, even if the app has multiple windows.
+To change the cursor's grab mode and visibility, we make the cursor options mutable.
 
-Use `ButtonInput::just_pressed` to check whether either input was pressed during the current frame.
-When Escape is pressed, set `cursor.grab_mode` to unlock the cursor and set `cursor.visible` to `true`.
-When the left mouse button is pressed, do the opposite.
+If the user `just_pressed` the escape key, we unlock the cursor and make it visible.
+This is done by setting the cursor's `grab_mode` to `CursorGrabMode::None` and its `visible` field to `true`.
+We do the inverse when the left mouse button is pressed: we lock the cursor (`CursorGrabMode::Locked`) and hide it.
+We don't need to check whether the mouse is pressed inside the window, because any inputs outside the game view are not captured by Bevy anyway.
 
-Add the system to `Update` and try it out.
-You should now be able to lock and unlock the cursor while the game is running.
+I wasn't sure whether there would be a specific schedule for handling user input, so I googled (DuckDuckGo'd?) it.
+Search assist confidently suggested: _You should use the `FixedUpdate` schedule for capturing and handling user input [...]_.
+This is **wrong**!
+The fixed-update schedule runs at a fixed interval, and is used for things like physics.
+Because it runs less frequently than the update schedule, it can miss input events.
+This goes to show that you shouldn't blindly trust AI-generated answers.
+
+In any case, there is no special schedule for input handling, so we can just add the system to the `Update` schedule.
+`PreUpdate` can also make sense to separate collecting input from processing it.
+You could even make your own schedule that sits in between those two to further separate concerns and make code more self-documenting.
+Pick whichever you prefer.
 
 ## Looking around
 
@@ -157,7 +170,7 @@ If you move diagonally, you'll notice that the camera moves faster than when mov
 This happens because combining two perpendicular directions produces a vector with a length of \(\sqrt{2}\), rather than \(1\).
 
 We can fix this by normalizing the movement vector with `delta.normalize()`.
-This gives us a vector of length \(1\), preserving the movement speed regardless of direction.
+This gives us a vector of length 1, preserving the movement speed regardless of direction.
 However, only normalize the vector if it isn't zero; otherwise, you'll end up with an invalid vector.
 
 You don't need to use a bunch of `if` statements to construct the movement vector.
@@ -169,7 +182,7 @@ The important part is understanding how the movement direction is determined and
 At this point, we can look around and move through the scene.
 However, we shouldn't do either when the game window isn't focused.
 
-One way to handle this is to check at the start of both `player_look` and `player_move` whether the cursor is locked:
+One way to handle this is to check at the top of relevant systems whether the cursor is locked, returning early if it isn't.
 
 ```rust
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
@@ -177,17 +190,6 @@ fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
 }
 ```
 
-We could call this function from both systems and return early if it returns `false`.
-However, Bevy provides a cleaner solution: [run conditions](https://bevy-cheatbook.github.io/programming/run-conditions.html).
-
-When adding the systems, we can attach a condition that determines whether they should run:
-
-```rust
-(player_look, player_move).run_if(is_focused)
-```
-
-Now Bevy only runs these systems when the condition is satisfied, keeping the movement and camera logic separate from the question of when that logic should execute.
-
-Run conditions are useful for much more than cursor locking.
-They let us control when systems execute without filling those systems with checks.
-We'll use them again as the project grows.
+Bevy provides a cleaner solution: [run conditions](https://bevy-cheatbook.github.io/programming/run-conditions.html).
+When adding the systems, we can attach a condition that determines whether they should run using `(a, b).run_if(is_focused)`.
+Bevy then only runs systems _a_ and _b_ when the condition is satisfied, keeping those systems' logic separate from whether that system should execute.

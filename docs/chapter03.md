@@ -1,5 +1,7 @@
 # Creating a voxel mesh
 
+TODO: first, add wireframe plugin to show how meshes are constructed for the cuboid.
+
 In a real voxel game, we don't want to create a separate `Cuboid` for every voxel.
 Instead, we want to combine the visible faces of many voxels into a single mesh for each chunk.
 This reduces the amount of geometry we need to render.
