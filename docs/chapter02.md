@@ -15,6 +15,7 @@ You can implement the `Default` trait, or derive it with the [better_default](ht
 I prefer the latter because the default values stay close to the struct definition.
 
 Our systems need access to these settings, so make `CameraSettings` a Bevy resource by deriving `Resource` and register it with the app using `init_resource::<CameraSettings>()`.
+(`init_resource` requires that the type implements `Default` or `FromWorld`. If you don't want that, you can use `insert_resource` instead.)
 Then, update the look and move systems to use the resource instead of the constants.
 Remember to add the resource as an argument to the functions.
 

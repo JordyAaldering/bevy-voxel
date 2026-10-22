@@ -2,6 +2,7 @@ use better_default::Default;
 use bevy::prelude::*;
 use bevy::{
     input::mouse::AccumulatedMouseMotion,
+    pbr::wireframe::{WireframeConfig, WireframePlugin},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::prelude::*;
@@ -27,7 +28,12 @@ fn main() -> AppExit {
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
             // ResourceInspectorPlugin::<CameraSettings>::default(),
+            WireframePlugin::default(),
         ))
+        .insert_resource(WireframeConfig {
+            global: true,
+            ..default()
+        })
         .init_resource::<CameraSettings>()
         .register_type::<CameraSettings>()
         .add_systems(Startup, (
