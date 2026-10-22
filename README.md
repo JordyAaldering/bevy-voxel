@@ -30,6 +30,22 @@ In particular, the _Entity Component System_ (ECS) is an important concept, as i
 
 >  Note: This guide is still a hot piece of garbage. As a placeholder, some text is AI generated (it's better than nothing), so be aware that information may be incorrect. Please star the repository if you find this guide useful, so I know to spend time on it. So far, only the first two chapters are fully human-written.
 
+## Chapters
+
+- [The first voxel](docs/chapter01.md)
+- [Inspecting settings with egui](docs/chapter02.md)
+- [Creating a voxel mesh](docs/chapter03.md)
+- [Creating a chunk](docs/chapter04.md)
+- [Multiple chunks](docs/chapter05.md)
+- [Multiple voxel types](docs/chapter06.md)
+- [Creating a player character](docs/chapter07.md)
+- [Breaking and placing blocks](docs/chapter08.md)
+- [Terrain generation](docs/chapter09.md)
+- [Generating the world](docs/chapter10.md)
+- [Performance debugging](docs/chapter11.md)
+- [Editor and refactoring](docs/chapter12.md)
+- [Phase'd chunk generation](docs/chapter13.md)
+
 ---
 
 To run a specific chapter, adjust `path = "src/chapter01.rs"` in `Cargo.toml`, then:
