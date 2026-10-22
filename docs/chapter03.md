@@ -1,48 +1,57 @@
 # Creating a voxel mesh
 
-TODO: first, add wireframe plugin to show how meshes are constructed for the cuboid.
-
-In a real voxel game, we don't want to create a separate `Cuboid` for every voxel.
+I hope you're warmed up, because this is where the real work starts.
+In this chapter we are going to manually generate the mesh for a voxel, rather than using Bevy's built-in `Cuboid` primitive.
+In a real voxel game, we don't want to create a separate cuboid for every voxel.
 Instead, we want to combine the visible faces of many voxels into a single mesh for each chunk.
-This reduces the amount of geometry we need to render.
+
+When our game has hundreds, or even thousand of voxels, we don't want to spawn a cuboid for every single voxel.
+First, this would mean that we generate a lot of faces for voxels that we can't even see.
+Second, graphics cards are not optimized for rendering on many small meshes, scattered throughout memory.
+They are much better at operating on large, contiguous blocks of data, which is why we want to combine many voxels into a single mesh.
+This groups the different data of each voxel by type and puts them next to each other in memory, which is much more efficient for the GPU to process.
+
+## But what even is a mesh?
+
+<img align="right" width="40%" src="https://preview.redd.it/missed-out-on-not-having-the-polygon-lara-croft-as-cosmetic-v0-9hcvefmlv6dd1.jpeg?auto=webp&s=e2fff685ba3a16e48241ff2e47b2d7ce7c1f3b9a">
+
+Essentially, a mesh just defines the shape of a 3D object.
+This shape is broken up into polygons (triangles), that together form the surface of the shape.
+We use triangles because they are the simplest 2D shape, making them the easiest to work and compute with.
+
+In its simplest form, a mesh consists of a list of _vertices_ and a list of _indices_.
+The vertices define the corners of the triangles in the mesh.
+Each 3-tuple in the list of indices tells which three vertices form a triangle.
+
+To make a triangle, we need three vertices and three indices.
+The triangle is then formed by connecting the three vertices in the order specified by the indices.
+Say, we have the following vertices: $v_0 = (0, 0)$, $v_1 = (1, 0)$, and $v_2 = (1, 1)$.
+
+```text
+|       v1
+|
+|
+| v0    v2
++——————————
+```
+
+If the indices are `[0, 2, 1]`, then the triangle is formed by connecting $v_0$ to $v_2$, $v_2$ to $v_1$, and $v_1$ back to $v_0$.
+
+```text
+|       v1       |       v1       |     / v1
+|                |       |        |    /  |
+|                |       |        |   /   |
+| v0————v2       | v0————v2       | v0————v2
++——————————      +——————————      +——————————
+```
+
+A square has four corners, but because we can only make triangles, we need to split it into two triangles, resulting in $2 \times 3 = 6$ indices.
+However, these two triangles share two vertices, meaning we only need four vertices.
+In the previous example, that would mean adding a fourth vertex $v_3 = (0, 1)$ and extending the indices to `[0, 2, 1, 0, 1, 3]`.
 
 Before we get to chunks, let's start with a single cube and build its mesh ourselves.
 Along the way, we'll explore how meshes work in general.
 The concepts apply to all kinds of geometry, not just voxels.
-
-## What is a mesh?
-
-A mesh describes the shape of a 3D object.
-It consists of vertices, which define points in space, and indices, which define how those points are connected.
-
-A vertex can contain more than just a position.
-It can also store information such as a normal, texture coordinates, or a colour.
-These attributes determine how the surface looks when rendered.
-
-Most real-time 3D graphics are built from triangles.
-Triangles are simple to render and can be used to approximate almost any surface.
-Even models that look smooth or curved are typically made up of many small triangles.
-
-A cube has six faces.
-Each face is a quadrilateral, which we can split into two triangles:
-
-```text
-v2 +---------+ v3
-   |        /|
-   |      /  |
-   |    /    |
-   |  /      |
-v0 +---------+ v1
-```
-
-The diagonal divides the face into two triangles: `(v0, v1, v2)` and `(v2, v1, v3)`.
-
-A cube has eight unique corners, but our mesh will contain 24 vertices: four for each of its six faces.
-This might seem wasteful, but there's a reason for it that we'll get to later.
-
-The important idea is that **a mesh is data describing geometry and its surface properties**.
-It doesn't inherently know what a voxel is or which faces are visible.
-Those are decisions we make when generating the mesh.
 
 ## Defining the faces
 
