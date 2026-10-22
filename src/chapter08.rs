@@ -194,10 +194,6 @@ impl ChunkData {
         self.entity = Some(entity);
     }
 
-    fn clear_entity(&mut self) {
-        self.entity = None;
-    }
-
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
         let VoxelCoord { x, y, z } = pos;
 

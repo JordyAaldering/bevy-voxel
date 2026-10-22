@@ -1,5 +1,3 @@
-#[allow(dead_code)]
-
 use bevy::math::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -18,6 +16,7 @@ pub enum Direction {
     Back,
 }
 
+#[allow(dead_code)]
 impl Direction {
     pub const fn iter() -> [Self; 6] {
         [

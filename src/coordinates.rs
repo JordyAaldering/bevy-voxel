@@ -1,5 +1,3 @@
-#[allow(dead_code)]
-
 use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, direction::Direction};
 
 use bevy::math::{Vec3, vec3};
@@ -16,6 +14,7 @@ pub struct VoxelCoord {
     pub z: usize,
 }
 
+#[allow(dead_code)]
 impl VoxelCoord {
     pub const fn new(x: usize, y: usize, z: usize) -> Self {
         debug_assert!(x < CHUNK_WIDTH);
@@ -43,6 +42,7 @@ pub struct WorldCoord {
     pub z: i32,
 }
 
+#[allow(dead_code)]
 impl WorldCoord {
     pub const fn new(x: i32, y: i32, z: i32) -> Self {
         Self { x, y, z }
@@ -87,6 +87,7 @@ pub struct ChunkCoord {
     pub z: i32,
 }
 
+#[allow(dead_code)]
 impl ChunkCoord {
     pub const fn new(x: i32, z: i32) -> Self {
         Self { x, z }

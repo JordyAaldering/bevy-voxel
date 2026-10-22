@@ -1,5 +1,3 @@
-#[allow(dead_code)]
-
 use bevy::math::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
