@@ -1,9 +1,7 @@
 # Creating a chunk
 
-So far, we've mainly focused on learning how Bevy works and how to generate a mesh.
-Now we're starting to build the foundation of the voxel engine itself, so it's worth thinking more carefully about how we represent our data.
-
-## Storing voxels
+The whole point of creating our own mesh was to more efficiently generate chunks, so let's do that, shall we?
+Chunks are at the core of our game, so it's worth first thinking carefully about how we represent our data.
 
 Our first instinct might be to represent each voxel as a struct containing everything associated with it:
 
@@ -17,30 +15,44 @@ Imagine a world containing millions of voxels.
 If every voxel stores its own position, we duplicate information that we could derive from its location in the chunk.
 If every voxel stores references to its neighbours, we add more data and make changes to the world more complicated.
 
-Instead, let's start with a simpler approach: **store only the information we need to identify each voxel**.
+Every byte of extra data blows up when we have millions of voxels, so we need to be extremely careful about what we store, and where.
 
-For this chapter, a voxel is either air or grass:
+I wouldn't be surprised more complicated voxels, like chests or furnaces, will ultimately become entities.
+We are working with an Entity Component System, after all.
+I'll leave that to a future chapter.
 
-```text
-Air     = empty space
-Grass   = solid voxel
+## What's in a chunk?
+
+All a chunk needs to know is what voxels it has, and where.
+The _what_ is easy: we can create a `VoxelType` enum, that contains only the type of voxel and nothing else.
+
+```rust
+enum VoxelType {
+    Air,
+    Grass,
+}
 ```
 
-We represent these options using a `VoxelType` enum.
-The chunk stores an array of these values rather than a separate struct for every voxel.
+The _where_ is not so straightforward.
+We can't waste space storing the voxel's position, but luckily we don't need to: based on the index of a voxel in the chunk's voxel array, we can derive its 3D coordinate within the chunk.
 
-This is enough for our current needs.
-A voxel's position is implicit in its location in the array, and we can calculate its neighbours when we need them.
+We have two options for storing the voxels:
 
-This doesn't mean that every voxel engine should store only a type.
-Some games need per-voxel state, and others store additional data separately.
-The important thing is to consider what information you actually need and avoid storing the same information in multiple places without a good reason.
+- A 3D array: `[[[VoxelType; CHUNK_WIDTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]`
+- A flat array: `[VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH]`
+
+Both have their advantages and disadvantages.
+From what I could find, it seems that they _should_ have the same memory layout.
+A 3D array is easier to index, but the flat array is simpler to iterate over.
+Pick whichever you prefer.
 
 If you'd like to explore alternative approaches, these discussions are useful starting points:
 
 - [How do I efficiently store blocks in chunks?](https://www.reddit.com/r/VoxelGameDev/comments/1lynvrl/how_do_i_efficiently_store_blocks_in_chunks/)
 - [Storing voxels for a voxel engine in C](https://gamedev.stackexchange.com/questions/172119/storing-voxels-for-a-voxel-engine-in-c)
 - [Designing a voxel structure around ECS](https://discussions.unity.com/t/designing-a-voxel-structure-around-ecs/789222/4)
+
+---
 
 ## Representing a chunk
 
