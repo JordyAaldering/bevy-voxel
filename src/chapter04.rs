@@ -256,10 +256,10 @@ fn spawn_chunk(
 }
 
 fn build_mesh(chunk: &ChunkData) -> Mesh {
-    let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
-    let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
-    let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
-    let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
+    let mut vertices: Vec<Vec3> = Vec::with_capacity(6 * 4);
+    let mut indices: Vec<u32> = Vec::with_capacity(6 * 2 * 3);
+    let mut normals: Vec<Vec3> = Vec::with_capacity(6 * 4);
+    let mut uvs: Vec<Vec2> = Vec::with_capacity(6 * 4);
 
     for (x, y, z, voxel) in chunk.iter()
         .filter(|(_, _, _, voxel)| *voxel != VoxelType::Air)
@@ -277,10 +277,10 @@ fn build_mesh(chunk: &ChunkData) -> Mesh {
             let origin = vec3(x as f32, y as f32, z as f32);
 
             let start = vertices.len() as u32;
-            vertices.extend_from_slice(&face.vertices(origin));
-            indices.extend_from_slice(&face.indices(start));
-            normals.extend_from_slice(&face.normals());
-            uvs.extend_from_slice(&face.uvs());
+            vertices.extend(&face.vertices(origin));
+            indices.extend(&face.indices(start));
+            normals.extend(&face.normals());
+            uvs.extend(&face.uvs());
         }
     }
 

@@ -144,6 +144,189 @@ We now have everything we need to generate our first mesh:
 - **Normals** describe which way the surface faces for lighting.
 - **UV coordinates** describe how a texture maps onto the surface.
 
-(Code description todo...)
+We'll work backwards in constructing the mesh: we won't know what to make before we know what Bevy expects.
+We already know from the previous chapters that we need a `Mesh3d` and `MeshMaterial3d` component to render a mesh.
+We leave the material a solid colour for now.
+Thus, we need to figure out what to put in the asset store in place of the `Cuboid`.
+
+If we look up [the documentation](https://docs.rs/bevy/latest/bevy/prelude/struct.Mesh.html) for `Mesh`, there is immediately a subsection _manual creation_ at the top.
+We see the four core components that we discussed before:
+
+- `Mesh::ATTRIBUTE_POSITION` sets the vertices,
+- `Mesh::ATTRIBUTE_NORMAL`, sets the normals,
+- `Mesh::ATTRIBUTE_UV_0`, sets the UV coordinates, and
+- `Indices::U32` sets the indices.
+
+`PrimitiveTopology` tells the renderer how to treat the vertex data.
+Most of the time this will be `PrimitiveTopology::TriangleList`.
+`RenderAssetUsages` tells whether the asset should be kept in memory after it has been uploaded to the GPU.
+Because we know that, in future, our mesh will change when we build or destroy blocks, we want to keep it in memory, so we use the default value.
+If the mesh is unchanging, we would use `RenderAssetUsages::RENDER_WORLD` instead to save memory.
+
+We can copy-paste this as a starting point for our voxel mesh.
+
+```rust
+fn build_mesh() -> Mesh {
+    let mut vertices: Vec<Vec3> = Vec::with_capacity(6 * 4);   // 4 vertices per face
+    let mut indices: Vec<u32> = Vec::with_capacity(6 * 2 * 3); // 2 triangles per face
+    let mut normals: Vec<Vec3> = Vec::with_capacity(6 * 4);    // 4 normals per face
+    let mut uvs: Vec<Vec2> = Vec::with_capacity(6 * 4);        // 4 uvs per face
+
+    todo!();
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
+```
+
+Each face has its own set of vertices, normals, and UV coordinates, so we can process the six faces independently.
+
+For convenience, we can define a `Face` struct.
+It only needs to contain the direction that this face is pointing.
+A `Vec3` would be enough, but I like to create separate types for different concepts, so the compiler won't allow us to mix them up by accident.
+
+```rust
+enum Direction {
+    /// Increasing x
+    Right,
+    /// Decreasing x
+    Left,
+    /// Increasing y
+    Top,
+    /// Decreasing y
+    Bottom,
+    /// Increasing z
+    Front,
+    /// Decreasing z
+    Back,
+}
+```
+
+Then, for each direction we create a face in `build_mesh`.
+Assuming `Face` has four functions for generating the vertices, indices, normals, and UV coordinates, we can extend the corresponding vectors with the data for each face using `extend` (e.g. `vertices.extend(&face.get_vertices())`).
+Now it comes down to implementing those four functions.
+
+Remember that a face consists of two triangles, for a total of four vertices and six indices.
+
+### Indices
+
+We actually start with the indices, because the first thing we need to determine is in which order we store the vertices.
+Looking from outside the face, I have chosen to add the vertices in the following order: bottom left, bottom right, top left, and top right.
+It doesn't matter which order you choose, as long as you are consistent across all faces.
+Otherwise, you'll get a very weird-looking voxel.
+
+```text
+2————3
+|    |
+|    |
+0————1
+```
+
+For constructing the two triangles we again have multiple options.
+We could 'cut' the square from top left to bottom right, or from bottom left to top right.
+I've chosen the latter:
+
+```text
+2————3
+| \  |
+|  \ |
+0————1
+```
+
+So we now have two triangles, consisting of the vertices `0, 1, 2` and `1, 2, 3`.
+But, remember that the order of the vertices matters: we need to make sure that vertices are added in a counter-clockwise order.
+For the first triangle, `0, 1, 2` is already correct, for the second triangle we order the vertices as `2, 1, 3`.
+
+But wait!
+
+What if this is the second face we are adding to the mesh?
+Then, `0, 1, 2, 3` correspond to the indices of the vertices that were added by the previous face.
+Thus, we need to offset the indices by the number of vertices that were already present in the mesh before we started with the current face.
+Compute this in `build_mesh`, and pass it into this function as an argument.
+
+### Vertices
+
+We already determined the order of the vertices, so now we need to figure out where in 3D space the four vertices of this face are located.
+Here, we can't really do better than a case distinction for each direction.
+
+Let's start with just the right face now, after which you should be able to do the rest.
+
+```rust
+match self.direction {
+    Direction::Right => [
+        todo!(), // Bottom left  (v0)
+        todo!(), // Bottom right (v1)
+        todo!(), // Top left     (v2)
+        todo!(), // Top right    (v3)
+    ],
+    _ => [Vec3::ZERO; 4],
+}
+```
+
+Doing this without any visual aid is a bit tricky, so I recommend drawing a 3D cube on a piece of paper.
+In the example below I've only filled in the origin.
+Note that it sits in the back, because the z-axis increases towards the front.
+Fill in all remaining $x$, $y$, and $z$ coordinates with either $0$ or $1$.
+
+```text
+    (x,y,z)———————————————————(x,y,z)
+         /|                  /|
+        / |                 / |
+       /  |                /  |
+(x,y,z)—————————————(x,y,z)   |
+      |   |               |   |
+      |   |               |   |
+      |   |               |   |
+      |  (0,0,0)——————————|——(x,y,z)
+      | /                 | /
+      |/                  |/
+(x,y,z)———————————————————(x,y,z)
+```
+
+Then, visualize this cube as if you are looking at it from the right side.
+From that point of view, the order of the vertices should be:
+
+```text
+          +———————————————————v3
+         /|                  /|
+        / |                 / |
+       /  |                /  |
+      +———————————————————v2  |
+      |   |               |   |
+      |   |               |   |
+      |   |               |   |
+      |  /————————————————|——v1
+      | /                 | /
+      |/                  |/
+      +———————————————————v0
+```
+
+From here, you should be able to match $v_0$ through $v_3$ to the corresponding coordinates you found in the cube, putting them in place of the `todo`s.
+Repeat this process for the five other faces.
+
+### Normals
+
+Normals are the easiest, because they are the same for all four vertices of a face.
+(Remember that this is what gives the cube its sharp edges.)
+The normal for each face is simply the direction of the face.
+For example, for `Direction::Right`, the normal is `Vec3::X` ($(1, 0, 0)$).
+Determine the normal for the given direction, and then return an array `[Vec3; 4]` with that normal repeated four times.
+
+### UV coordinates
+
+Because the material is a solid colour, the UV coordinates don't matter for now.
+Nonetheless, for completeness we'll set the UV coordinates to the entire texture.
+Remember that we added the four vertices of the face in the order: bottom left, bottom right, top left, and top right, looking at the face from the outside.
+
+Thus, the first vertex should have UV coordinates at the bottom left of the texture.
+But, remember that the y-axis is flipped in UV coordinates, so the bottom left voxel actually has $y = 1$ in UV coordinates.
+Because you can't visually see whether what you've done is correct, I'll just give you the UV coordinates for the four vertices, in order: $(0, 1)$, $(1, 1)$, $(0, 0)$, and $(1, 0)$.
+
+---
+
+That's it, you should now have your own, homemade voxel mesh!
 
 > Your voxel not quite looking like a voxel? Remember to enable the wireframe view to help you debug the mesh. Pay particular attention to the list of indices, as this is the most common source of errors. When in doubt, apply your code on paper to visually verify that the triangles are formed correctly.

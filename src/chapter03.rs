@@ -123,12 +123,15 @@ impl Face {
     }
 
     /// Returns the UV coordinates of the 4 corners of the quad.
+    ///
+    /// Note that the y-axis is flipped in UV coordinates, so the
+    /// bottom left voxel actually has `y = 1` in UV coordinates.
     fn uvs(&self) -> [Vec2; 4] {
         [
-            vec2(0.0, 0.0), // Bottom left
-            vec2(1.0, 0.0), // Bottom right
-            vec2(0.0, 1.0), // Top left
-            vec2(1.0, 1.0), // Top right
+            vec2(0.0, 1.0), // Bottom left
+            vec2(1.0, 1.0), // Bottom right
+            vec2(0.0, 0.0), // Top left
+            vec2(1.0, 0.0), // Top right
         ]
     }
 }
@@ -191,10 +194,10 @@ fn spawn_voxel(
 }
 
 fn build_mesh() -> Mesh {
-    let mut vertices = Vec::with_capacity(6 * 4); // 4 vertices per face
-    let mut indices = Vec::with_capacity(6 * 6);  // 6 indices per face (2 triangles)
-    let mut normals = Vec::with_capacity(6 * 4);  // 4 normals per face
-    let mut uvs = Vec::with_capacity(6 * 4);      // 4 uvs per face
+    let mut vertices: Vec<Vec3> = Vec::with_capacity(6 * 4);
+    let mut indices: Vec<u32> = Vec::with_capacity(6 * 2 * 3);
+    let mut normals: Vec<Vec3> = Vec::with_capacity(6 * 4);
+    let mut uvs: Vec<Vec2> = Vec::with_capacity(6 * 4);
 
     for direction in [
         Direction::Right,
@@ -207,10 +210,10 @@ fn build_mesh() -> Mesh {
         let face = Face { direction };
 
         let start = vertices.len() as u32;
-        vertices.extend_from_slice(&face.vertices());
-        indices.extend_from_slice(&face.indices(start));
-        normals.extend_from_slice(&face.normals());
-        uvs.extend_from_slice(&face.uvs());
+        vertices.extend(&face.vertices());
+        indices.extend(&face.indices(start));
+        normals.extend(&face.normals());
+        uvs.extend(&face.uvs());
     }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
