@@ -261,7 +261,7 @@ fn build_mesh(chunk: &ChunkData) -> Mesh {
     let mut normals: Vec<Vec3> = Vec::with_capacity(6 * 4);
     let mut uvs: Vec<Vec2> = Vec::with_capacity(6 * 4);
 
-    for (x, y, z, voxel) in chunk.iter()
+    for (x, y, z, _) in chunk.iter()
         .filter(|(_, _, _, voxel)| *voxel != VoxelType::Air)
     {
         for direction in Direction::iter() {

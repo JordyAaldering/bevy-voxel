@@ -43,87 +43,53 @@ We have two options for storing the voxels:
 
 Both have their advantages and disadvantages.
 From what I could find, it seems that they _should_ have the same memory layout.
-A 3D array is easier to index, but the flat array is simpler to iterate over.
+A 3D array is easier to index, but the flat array is simpler to iterate over. (_Need to look more into this._)
 Pick whichever you prefer.
 
-If you'd like to explore alternative approaches, these discussions are useful starting points:
+To index into the flattnened array from an x, y, and z coordinate, we use this formula:
+
+> `index = x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)`
+
+- Moving along x simply increments the index.
+- Moving along y means we 'move by a row', which means moving by `CHUNK_WIDTH` entries.
+- Moving along z means we 'move by a layer', which means moving by `CHUNK_WIDTH * CHUNK_HEIGHT` entries.
+
+Keep this in mind if you ever iterate over large areas of the chunk.
+It is best to put the z loop on the outside, the y loop in the middle, and the x loop on the inside.
+Incrementing x by one (y and z remaining the same) is the next entry in memory, which is likely already loaded into the processor's caches.
+Putting the loops in the opposite order leads to a lot of jumping around in memory: incrementing z by one (x and y remaining the same), we jump by `CHUNK_WIDTH * CHUNK_HEIGHT` entries every time.
+
+> This results in so-called [_cache misses_](https://www.geeksforgeeks.org/computer-organization-architecture/types-of-cache-misses), and inhibits the use of [_vectorization_](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data).
+
+## Spawning a chunk entity
+
+...
+
+## Generating the chunk mesh
+
+...
+
+## Refactoring meshes
+
+In future, we'll be creating a mesh for each chunk.
+For this, it can be convenient to group vertices, indices, normals, and uvs into a single `MeshData` struct.
+That keeps the relevant data in one place, and we can add some convenience functions, like `add_quad`.
+If you want, extract the mesh data into a separate struct now.
+
+Now might also be a good time to get rid of the `Face` struct.
+It was useful for generating a single cube, but now that we're generating many faces, it adds unnecessary complexity.
+Its logic can be moved into the `MeshData` instead.
+If you put the `MeshData` in a separate file, you can more easily determine which parts are specific to rendering, and should be there.
+
+---
+
+Potentially interesting sources:
 
 - [How do I efficiently store blocks in chunks?](https://www.reddit.com/r/VoxelGameDev/comments/1lynvrl/how_do_i_efficiently_store_blocks_in_chunks/)
 - [Storing voxels for a voxel engine in C](https://gamedev.stackexchange.com/questions/172119/storing-voxels-for-a-voxel-engine-in-c)
 - [Designing a voxel structure around ECS](https://discussions.unity.com/t/designing-a-voxel-structure-around-ecs/789222/4)
 
 ---
-
-## Representing a chunk
-
-A chunk is a fixed-size region of the voxel world.
-Rather than creating an entity for every voxel, we store the voxels together and generate a mesh for the chunk.
-
-For now, our chunk is only three voxels wide, four voxels tall, and three voxels deep.
-These dimensions are defined by `CHUNK_WIDTH` and `CHUNK_HEIGHT`.
-
-```text
-          Chunk: 3 × 4 × 3
-
-             y
-             ↑
-          +-------+
-         /       /|
-        +-------+ |
-        |       | |
-        |       | +
-        |       |/
-        +-------+----→ x
-       /
-      z
-```
-
-The chunk contains 3 x 4 x 3 = 36 voxels.
-We initialize them all as air, then fill the bottom half with grass.
-
-### A flat array
-
-Although a chunk is three-dimensional, we store its voxels in a one-dimensional array.
-This might seem odd at first, but it keeps the representation simple and stores the voxel values contiguously.
-
-The challenge is mapping three coordinates to a single array index.
-
-We use this formula:
-
-> index = x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
-
-Here, W is the chunk width and H is its height.
-In our implementation, those are `CHUNK_WIDTH` and `CHUNK_HEIGHT`.
-
-The idea is to lay out the coordinates in a consistent order:
-
-- Moving along X advances one array entry.
-- Moving along Y advances by one row, which contains `CHUNK_WIDTH` entries.
-- Moving along Z advances by one layer, which contains `CHUNK_WIDTH * CHUNK_HEIGHT` entries.
-
-For our chunk, the first few entries are arranged like this:
-
-```text
-Coordinates       Array index
-
-(0, 0, 0)    →        0
-(1, 0, 0)    →        1
-(2, 0, 0)    →        2
-(0, 1, 0)    →        3
-(1, 1, 0)    →        4
-(2, 1, 0)    →        5
-...
-(0, 0, 1)    →       12
-```
-
-X changes fastest, followed by Y and then Z.
-This is one common way to lay out a three-dimensional grid in a flat array.
-Other layouts are possible, but whichever one you choose, keep the indexing formula consistent.
-
-The `Chunk::index` method implements this mapping.
-We use it both when filling the chunk and when retrieving voxels during mesh generation.
-
-This is a useful general technique whenever you need to represent multidimensional data in a flat array.
 
 ## Generating the chunk mesh
 
@@ -253,15 +219,3 @@ Those are separate problems, and we don't need to solve them all at once.
 The important step is that we now have a chunk data structure and a mesh-generation algorithm that can skip hidden faces.
 
 Next, we can build on this foundation to make chunks interact with each other and form a larger voxel world.
-
-## Refactoring meshes
-
-In future, we'll be creating a mesh for each chunk.
-For this, it can be convenient to group vertices, indices, normals, and uvs into a single `MeshData` struct.
-That keeps the relevant data in one place, and we can add some convenience functions, like `add_quad`.
-If you want, extract the mesh data into a separate struct now.
-
-Now might also be a good time to get rid of the `Face` struct.
-It was useful for generating a single cube, but now that we're generating many faces, it adds unnecessary complexity.
-Its logic can be moved into the `MeshData` instead.
-If you put the `MeshData` in a separate file, you can more easily determine which parts are specific to rendering, and should be there.

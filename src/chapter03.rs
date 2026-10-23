@@ -199,14 +199,7 @@ fn build_mesh() -> Mesh {
     let mut normals: Vec<Vec3> = Vec::with_capacity(6 * 4);
     let mut uvs: Vec<Vec2> = Vec::with_capacity(6 * 4);
 
-    for direction in [
-        Direction::Right,
-        Direction::Left,
-        Direction::Top,
-        Direction::Bottom,
-        Direction::Front,
-        Direction::Back,
-    ] {
+    for direction in Direction::iter() {
         let face = Face { direction };
 
         let start = vertices.len() as u32;
