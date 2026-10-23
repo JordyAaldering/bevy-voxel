@@ -9,7 +9,7 @@ When our game has hundreds, or even thousand of voxels, we don't want to spawn a
 First, this would mean that we generate a lot of faces for voxels that we can't even see.
 Second, graphics cards are not optimized for rendering on many small meshes, scattered throughout memory.
 They are much better at operating on large, contiguous blocks of data, which is why we want to combine many voxels into a single mesh.
-This groups the different data of each voxel by type and puts them next to each other in memory, which is much more efficient for the GPU to process.
+This groups the different data of each voxel by type ([AoS2SoA](https://en.wikipedia.org/wiki/AoS_and_SoA)), and puts them next to each other in memory ([batching](https://en.wikipedia.org/wiki/Batch_processing)), which is much more efficient for the GPU to process.
 
 ## Visualizing meshes
 
@@ -98,11 +98,25 @@ To avoid this, we have to give each face its own set of normals, which gives the
 
 ### Texture coordinates
 
-For the same reason we want to bundle our meshes together, we typically also want to combine multiple textures into a single image.
+For the same reasons we want to bundle voxels together into one big mesh, we often also want to combine multiple smaller textures into a single image.
 
 ![](../assets/blocks.png)
 
-UV coordinates associate each vertex with a position in a 2D texture.
+But of course, we don't want every face to show the entire image.
+Instead, we need some way to select a specific region of the texture for different parts of the mesh.
+For example, for a stone voxel we only want to use the top-left quarter of the texture rather than the whole thing.
+
+This is what UV coordinates are for: they assign each vertex a position in the texture.
+Each UV coordinate is a 2D vector with values between zero and one.
+$(0, 0)$ is the top left corner of the texture, $(1, 0)$ the top right, and $(1, 1)$ the bottom right.
+In the image below, that corresponds to cyan, orange, and orange, respectively.
+
+![](https://cssgradient.imgix.net/4SQ9NqVn7xyjM7C8kUYj1Q/5d5c370fd2c12ce31ca6f4fb84edb3f0/linear-gradient.png)
+
+Then, when we render a triangle, for each pixel in the triangle, we interpolate the UV coordinates of its three vertices to find the corresponding pixel in the texture.
+A pixel a third of the way between vertices $v_0$ and $v_1$ would thus use a weighted average of their corresponding UV coordinates: $\frac{2}{3}v_0(uv) + \frac{1}{3}v_1(uv)$.
+In the above gradient, that would be a yellow-ish colour.
+We repeat this process for every pixel in the triangle, until the whole surface is coloured.
 
 ```text
   (0, 0) +———————————————+ (1, 0)
@@ -114,12 +128,16 @@ UV coordinates associate each vertex with a position in a 2D texture.
   (0, 1) +———————————————+ (1, 1)
 ```
 
+> You might have noticed that the [y-axis points downwards](https://bevy-cheatbook.github.io/pitfalls/uv-coordinates.html) in the image. This is inconsistent with Bevy's coordinate system, where the y-axis points up. It is, however, consistent with how most image file formats store pixel data, and with how most graphics APIs work:
+
 ### Putting it all together
 
 Our voxel has six faces, each consisting of two triangles.
 This gives our voxel a total of $6 \times 4 = 24$ vertices, $6 \times 2 \times 3 = 36$ indices, $6 \times 4 = 24$ normals, and $6 \times 4 = 24$ UV coordinates.
 
 ---
+
+# Not curated yet from here on!
 
 ## Building the mesh
 
