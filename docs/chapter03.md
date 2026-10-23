@@ -130,8 +130,6 @@ We repeat this process for every pixel in the triangle, until the whole surface 
 
 > You might have noticed that the [y-axis points downwards](https://bevy-cheatbook.github.io/pitfalls/uv-coordinates.html) in the image. This is inconsistent with Bevy's coordinate system, where the y-axis points up. It is, however, consistent with how most image file formats store pixel data, and with how most graphics APIs work:
 
-### Putting it all together
-
 Our voxel has six faces, each consisting of two triangles.
 This gives our voxel a total of $6 \times 4 = 24$ vertices, $6 \times 2 \times 3 = 36$ indices, $6 \times 4 = 24$ normals, and $6 \times 4 = 24$ UV coordinates.
 
@@ -325,8 +323,6 @@ Thus, the first vertex should have UV coordinates at the bottom left of the text
 But, remember that the y-axis is flipped in UV coordinates, so the bottom left voxel actually has $y = 1$ in UV coordinates.
 Because you can't visually see whether what you've done is correct, I'll just give you the UV coordinates for the four vertices, in order: $(0, 1)$, $(1, 1)$, $(0, 0)$, and $(1, 0)$.
 
----
+> Your voxel not quite looking like a voxel? Remember to enable the wireframe view to help you debug the mesh. Pay particular attention to the list of indices, as this is the most common source of errors. When in doubt, apply your code on paper to visually verify that the triangles are formed correctly.
 
 That's it, you should now have your own, homemade voxel mesh!
-
-> Your voxel not quite looking like a voxel? Remember to enable the wireframe view to help you debug the mesh. Pay particular attention to the list of indices, as this is the most common source of errors. When in doubt, apply your code on paper to visually verify that the triangles are formed correctly.
