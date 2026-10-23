@@ -135,97 +135,15 @@ We repeat this process for every pixel in the triangle, until the whole surface 
 Our voxel has six faces, each consisting of two triangles.
 This gives our voxel a total of $6 \times 4 = 24$ vertices, $6 \times 2 \times 3 = 36$ indices, $6 \times 4 = 24$ normals, and $6 \times 4 = 24$ UV coordinates.
 
----
-
-# Not curated yet from here on!
-
 ## Building the mesh
 
-We now have the concepts needed to generate our cube:
+We now have everything we need to generate our first mesh:
 
 - **Positions** describe where the vertices are.
 - **Indices** describe which vertices form each triangle.
 - **Normals** describe which way the surface faces for lighting.
 - **UV coordinates** describe how a texture maps onto the surface.
 
-Each face contributes four vertices, six indices, four normals, and four UV coordinates.
-We generate these values for each of the six directions and append them to the corresponding arrays.
+(Code description todo...)
 
-```text
-             Cube
-               |
-      +--------+--------+
-      |        |        |
-    Right     Left     Top
-      |        |        |
-      +--------+--------+
-               |
-         Bottom, Front,
-             Back
-               |
-               v
-        Mesh attributes
-               |
-               v
-            Bevy Mesh
-```
-
-For our cube, the arrays contain:
-
-| Attribute | Number of entries |
-|---|---:|
-| Positions | 24 |
-| Indices | 36 |
-| Normals | 24 |
-| UV coordinates | 24 |
-
-You might wonder why we store 24 vertices when a cube has only eight unique corners.
-Each face needs independent surface attributes.
-For example, the top and front faces have different normals at their shared corner, so they need separate vertices.
-
-More generally, a vertex is a complete set of attributes, not just a position.
-Two vertices can occupy the same point in space while still being different vertices because their normals, UV coordinates, or other attributes differ.
-
-Once we've generated the arrays, we create a Bevy `Mesh`, specify that it uses a triangle list, and insert the attributes and indices.
-
-`PrimitiveTopology::TriangleList` tells Bevy to interpret each group of three indices as a triangle.
-`RenderAssetUsages` controls where mesh data is retained for rendering and asset access; you can refer to the [Bevy documentation](https://docs.rs/bevy/latest/bevy/asset/struct.RenderAssetUsages.html) for details.
-
-You don't need to memorise every Bevy API involved.
-What matters is understanding the data we're constructing and how the pieces relate to each other.
-The API is simply how we express these concepts in Bevy.
-
-## Rendering the mesh
-
-We can now replace Bevy's built-in `Cuboid` with our generated mesh.
-The entity still has a transform and a material; only the source of its geometry changes.
-
-Since we've generated the vertices directly in the range from zero to one, we don't need a separate voxel position or a translation to place the mesh.
-It already sits at the world origin.
-
-Run the game.
-The result should look much like it did before, even though we're now generating the geometry ourselves.
-
-Try changing the vertex positions, adjusting the normals, or changing the UV coordinates.
-Observe how each change affects the result.
-Reversing the winding order is also a useful experiment: it demonstrates why triangle orientation matters.
-
-When a mesh looks wrong, ask yourself which part of its data is responsible:
-
-- Is the geometry in the right place?
-- Are the indices connecting the intended vertices?
-- Are the triangles facing the right way?
-- Are the normals correct?
-- Are the UV coordinates mapped as intended?
-
-This way of reasoning applies to almost any mesh you generate.
-
-## What's next?
-
-We've generated a mesh for a single voxel, but we're still creating all six faces, regardless of whether they're visible.
-
-Place two voxels next to each other and the faces between them are hidden.
-We don't need to render those faces, yet our current approach would generate them anyway.
-
-The next step is to generate a mesh from multiple voxels, skipping faces that are covered by neighbouring voxels.
-This will give us the foundation for chunk meshes, where we combine many voxels into one mesh and avoid generating geometry that the player can never see.
+> Your voxel not quite looking like a voxel? Remember to enable the wireframe view to help you debug the mesh. Pay particular attention to the list of indices, as this is the most common source of errors. When in doubt, apply your code on paper to visually verify that the triangles are formed correctly.
