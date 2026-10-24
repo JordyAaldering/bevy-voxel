@@ -5,17 +5,21 @@ use crate::{
 };
 
 use better_default::Default;
-use bevy::prelude::*;
 use bevy::{
+    prelude::*,
     asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
     mesh::{Indices, PrimitiveTopology},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::{
+    prelude::*,
+    bevy_egui::{
+        prelude::*,
+        input::EguiWantsInput,
+    },
+    quick::WorldInspectorPlugin,
+};
 
 #[derive(Default, Resource, Reflect, InspectorOptions)]
 #[reflect(Resource, InspectorOptions)]

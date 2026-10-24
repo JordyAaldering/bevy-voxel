@@ -13,6 +13,7 @@ use bevy::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
+    math::CompassQuadrant,
     mesh::{Indices, PrimitiveTopology},
     platform::collections::HashMap,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
@@ -44,7 +45,7 @@ enum VoxelType {
 }
 
 impl VoxelType {
-    fn is_transparent(&self) -> bool {
+    fn is_transparent(self) -> bool {
         matches!(self, VoxelType::Air)
     }
 
@@ -95,21 +96,9 @@ struct ChunkData {
 
 impl ChunkData {
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
-        let VoxelCoord { x, y, z } = pos;
-
-        // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
-        // which is definitely greather than the width and height.
-        let (x, y, z) = match direction {
-            Direction::Right => (x + 1, y, z),
-            Direction::Left => (x.wrapping_sub(1), y, z),
-            Direction::Top => (x, y + 1, z),
-            Direction::Bottom => (x, y.wrapping_sub(1), z),
-            Direction::Front => (x, y, z + 1),
-            Direction::Back => (x, y, z.wrapping_sub(1)),
-        };
-
-        if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            Some(self[VoxelCoord::new(x, y, z)])
+        let neighbor_pos = pos + direction;
+        if neighbor_pos.in_bounds() {
+            Some(self[neighbor_pos])
         } else {
             None
         }
@@ -143,8 +132,8 @@ impl IndexMut<VoxelCoord> for ChunkData {
 
 struct MeshData {
     atlas: TextureAtlas,
-    vertices: Vec<Vec3>,
     indices: Vec<u32>,
+    vertices: Vec<Vec3>,
     normals: Vec<Vec3>,
     uvs: Vec<Vec2>,
 }
@@ -168,15 +157,6 @@ impl MeshData {
         self.add_quad_uvs(texture);
     }
 
-    /// Adds the vertex indices for a quad (two triangles).
-    ///
-    /// Vertices are ordered as viewed from outside the voxel:
-    /// ```text
-    /// 2----3
-    /// | \  |
-    /// |  \ |
-    /// 0----1
-    /// ```
     fn add_quad_indices(&mut self, start: u32) {
         self.indices.extend([
             // First triangle
@@ -190,25 +170,6 @@ impl MeshData {
         ]);
     }
 
-    /// Returns the four vertices of the quad.
-    ///
-    /// The quad is defined by the origin and direction of the face:
-    /// ```text
-    ///     (0,1,0)-------------------(1,1,0)
-    ///          /|                  /|
-    ///         / |                 / |
-    ///        /  |                /  |
-    /// (0,1,1)-------------(1,1,1)   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |  (0,0,0)----------|--(1,0,0)
-    ///       | /                 | /
-    ///       |/                  |/
-    /// (0,0,1)-------------------(1,0,1)
-    /// ```
-    ///
-    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
     fn add_quad_vertices(&mut self, direction: Direction, o: Vec3) {
         self.vertices.extend(match direction {
             Direction::Right => [
@@ -250,12 +211,10 @@ impl MeshData {
         });
     }
 
-    /// Returns the normals of the 4 corners of the quad.
     fn add_quad_normals(&mut self, direction: Direction) {
         self.normals.extend([direction.vec3(); 4]);
     }
 
-    /// Returns the UV coordinates of the 4 corners of the quad.
     fn add_quad_uvs(&mut self, texture: TextureAtlasPosition) {
         self.uvs.extend(&self.atlas.uvs(texture));
     }
@@ -275,9 +234,8 @@ struct VoxelWorld {
 }
 
 impl VoxelWorld {
-    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
-        let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
-        self.chunks.get(&neighbor_pos)
+    fn get_chunk(&self, pos: ChunkCoord) -> Option<&ChunkData> {
+        self.chunks.get(&pos)
     }
 }
 
@@ -394,48 +352,43 @@ fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld) -> M
         }
 
         for direction in Direction::iter() {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
-                if !neighbor.is_transparent() {
-                    continue;
-                }
-            } else {
-                // If get_neighbor_voxel returns None, the voxel exists in a neighboring chunk
-                let offset = match direction {
-                    Direction::Right => Some((1, 0)),
-                    Direction::Left => Some((-1, 0)),
-                    Direction::Front => Some((0, 1)),
-                    Direction::Back => Some((0, -1)),
-                    _ => None,
-                };
-
-                if let Some((dx, dz)) = offset &&
-                    let Some(neighbor_chunk) = world.get_chunk_neighbor(chunk_pos, dx, dz)
-                {
-                    let VoxelCoord { x, y, z } = voxel_pos;
-
-                    let (nx, ny, nz) = match direction {
-                        Direction::Right => (0, y, z),
-                        Direction::Left => (CHUNK_WIDTH - 1, y, z),
-                        Direction::Front => (x, y, 0),
-                        Direction::Back => (x, y, CHUNK_WIDTH - 1),
-                        _ => unreachable!(),
-                    };
-
-                    let voxel_pos = VoxelCoord::new(nx, ny, nz);
-                    let neighbor = neighbor_chunk[voxel_pos];
-                    if !neighbor.is_transparent() {
-                        continue;
-                    }
-                }
+            if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
+                let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
+                let texture = voxel.texture(direction);
+                mesh_data.add_quad(direction, origin, texture);
             }
-
-            let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
-            let texture = voxel.texture(direction);
-            mesh_data.add_quad(direction, origin, texture);
         }
     }
 
     mesh_data.build()
+}
+
+fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord, voxel_pos: VoxelCoord, direction: Direction) -> bool {
+    if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
+        return neighbor.is_transparent();
+    }
+
+    // The voxel is out of bounds of the chunk, so check the neighboring chunk instead
+
+    // Chunks only exist horizontally, always show the top-most and bottom-most faces
+    let Ok(compass) = direction.try_into() else {
+        return true;
+    };
+
+    // If the chunk does not exist, we assume it is empty and show the face
+    let Some(neighbor_chunk) = world.get_chunk(chunk_pos + compass) else {
+        return true;
+    };
+
+    let neighbor_pos = match compass {
+        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
+        CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
+        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+    };
+
+    neighbor_chunk[neighbor_pos]
+        .is_transparent()
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {

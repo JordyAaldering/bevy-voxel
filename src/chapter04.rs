@@ -1,21 +1,29 @@
+mod coordinates;
 mod direction;
 
 use crate::{
+    coordinates::VoxelCoord,
     direction::Direction,
 };
 
+use std::{mem, ops::{Index, IndexMut}};
+
 use better_default::Default;
-use bevy::prelude::*;
 use bevy::{
+    prelude::*,
     asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
     mesh::{Indices, PrimitiveTopology},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::{
+    prelude::*,
+    bevy_egui::{
+        prelude::*,
+        input::EguiWantsInput,
+    },
+    quick::WorldInspectorPlugin,
+};
 
 const CHUNK_WIDTH: usize = 3;
 const CHUNK_HEIGHT: usize = 4;
@@ -38,37 +46,87 @@ enum VoxelType {
 }
 
 impl VoxelType {
-    fn is_transparent(&self) -> bool {
+    fn is_transparent(self) -> bool {
         matches!(self, VoxelType::Air)
     }
 }
 
-struct Face {
-    direction: Direction,
+struct ChunkData {
+    voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
-impl Face {
-    /// Returns the four vertices of the quad.
-    ///
-    /// The quad is defined by the origin and direction of the face:
-    /// ```text
-    ///     (0,1,0)-------------------(1,1,0)
-    ///          /|                  /|
-    ///         / |                 / |
-    ///        /  |                /  |
-    /// (0,1,1)-------------(1,1,1)   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |  (0,0,0)----------|--(1,0,0)
-    ///       | /                 | /
-    ///       |/                  |/
-    /// (0,0,1)-------------------(1,0,1)
-    /// ```
-    ///
-    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
-    fn vertices(&self, o: Vec3) -> [Vec3; 4] {
-        match self.direction {
+impl ChunkData {
+    fn index(x: usize, y: usize, z: usize) -> usize {
+        x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
+    }
+
+    fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
+        let neighbor_pos = pos + direction;
+        if neighbor_pos.in_bounds() {
+            Some(self[neighbor_pos])
+        } else {
+            None
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (VoxelCoord, VoxelType)> {
+        (0..CHUNK_WIDTH).flat_map(move |z| {
+            (0..CHUNK_HEIGHT).flat_map(move |y| {
+                (0..CHUNK_WIDTH).map(move |x| {
+                    let pos = VoxelCoord::new(x, y, z);
+                    (pos, self[pos])
+                })
+            })
+        })
+    }
+}
+
+impl Index<VoxelCoord> for ChunkData {
+    type Output = VoxelType;
+
+    fn index(&self, pos: VoxelCoord) -> &Self::Output {
+        &self.voxels[pos.index()]
+    }
+}
+
+impl IndexMut<VoxelCoord> for ChunkData {
+    fn index_mut(&mut self, pos: VoxelCoord) -> &mut Self::Output {
+        &mut self.voxels[pos.index()]
+    }
+}
+
+#[derive(Default)]
+struct MeshData {
+    indices: Vec<u32>,
+    vertices: Vec<Vec3>,
+    normals: Vec<Vec3>,
+    uvs: Vec<Vec2>,
+}
+
+impl MeshData {
+    fn add_quad(&mut self, direction: Direction, origin: Vec3) {
+        let start = self.vertices.len() as u32;
+        self.add_quad_indices(start);
+        self.add_quad_vertices(direction, origin);
+        self.add_quad_normals(direction);
+        self.add_quad_uvs();
+    }
+
+    fn add_quad_indices(&mut self, start: u32) {
+        self.indices.extend([
+            // First triangle
+            start + 0, // Bottom left
+            start + 1, // Bottom right
+            start + 2, // Top left
+            // Second triangle
+            start + 2, // Top left
+            start + 1, // Bottom right
+            start + 3, // Top right
+        ]);
+    }
+
+    fn add_quad_vertices(&mut self, direction: Direction, o: Vec3) {
+        self.vertices.extend(match direction {
             Direction::Right => [
                 o + Vec3::X + Vec3::Z,
                 o + Vec3::X,
@@ -105,88 +163,28 @@ impl Face {
                 o + Vec3::X + Vec3::Y,
                 o + Vec3::Y,
             ],
-        }
+        });
     }
 
-    /// Returns the vertex indices for the quad (two triangles).
-    ///
-    /// Vertices are ordered as viewed from outside the voxel:
-    /// ```text
-    /// 2----3
-    /// | \  |
-    /// |  \ |
-    /// 0----1
-    /// ```
-    fn indices(&self, start: u32) -> [u32; 6] {
-        [
-            // First triangle
-            start + 0, // Bottom left
-            start + 1, // Bottom right
-            start + 2, // Top left
-            // Second triangle
-            start + 2, // Top left
-            start + 1, // Bottom right
-            start + 3, // Top right
-        ]
+    fn add_quad_normals(&mut self, direction: Direction) {
+        self.normals.extend([direction.vec3(); 4]);
     }
 
-    /// Returns the normals of the 4 corners of the quad.
-    fn normals(&self) -> [Vec3; 4] {
-        [self.direction.vec3(); 4]
-    }
-
-    /// Returns the UV coordinates of the 4 corners of the quad.
-    ///
-    /// Note that the y-axis is flipped in UV coordinates, so the
-    /// bottom left voxel actually has `y = 1` in UV coordinates.
-    fn uvs(&self) -> [Vec2; 4] {
-        [
+    fn add_quad_uvs(&mut self) {
+        self.uvs.extend([
             vec2(0.0, 1.0), // Bottom left
             vec2(1.0, 1.0), // Bottom right
             vec2(0.0, 0.0), // Top left
             vec2(1.0, 0.0), // Top right
-        ]
-    }
-}
-
-struct ChunkData {
-    voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
-}
-
-impl ChunkData {
-    fn index(x: usize, y: usize, z: usize) -> usize {
-        x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)
+        ]);
     }
 
-    fn get_neighbor_voxel(&self, x: usize, y: usize, z: usize, direction: Direction) -> Option<VoxelType> {
-        // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
-        // which is definitely greather than the width and height.
-        let (x, y, z) = match direction {
-            Direction::Right => (x + 1, y, z),
-            Direction::Left => (x.wrapping_sub(1), y, z),
-            Direction::Top => (x, y + 1, z),
-            Direction::Bottom => (x, y.wrapping_sub(1), z),
-            Direction::Front => (x, y, z + 1),
-            Direction::Back => (x, y, z.wrapping_sub(1)),
-        };
-
-        if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            let idx = ChunkData::index(x, y, z);
-            Some(self.voxels[idx])
-        } else {
-            None
-        }
-    }
-
-    fn iter(&self) -> impl Iterator<Item = (usize, usize, usize, VoxelType)> {
-        (0..CHUNK_WIDTH).flat_map(move |z| {
-            (0..CHUNK_HEIGHT).flat_map(move |y| {
-                (0..CHUNK_WIDTH).map(move |x| {
-                    let idx = ChunkData::index(x, y, z);
-                    (x, y, z, self.voxels[idx])
-                })
-            })
-        })
+    fn build(&mut self) -> Mesh {
+        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mem::take(&mut self.vertices))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mem::take(&mut self.normals))
+            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mem::take(&mut self.uvs))
+            .with_inserted_indices(Indices::U32(mem::take(&mut self.indices)))
     }
 }
 
@@ -259,39 +257,26 @@ fn spawn_chunk(
 }
 
 fn build_mesh(chunk: &ChunkData) -> Mesh {
-    let mut vertices: Vec<Vec3> = Vec::new();
-    let mut indices: Vec<u32> = Vec::new();
-    let mut normals: Vec<Vec3> = Vec::new();
-    let mut uvs: Vec<Vec2> = Vec::new();
+    let mut mesh_data = MeshData::default();
 
-    for (x, y, z, _) in chunk.iter()
-        .filter(|(_, _, _, voxel)| *voxel != VoxelType::Air)
+    for (voxel_pos, _) in chunk.iter()
+        .filter(|(_, voxel)| !voxel.is_transparent())
     {
         for direction in Direction::iter() {
-            // Always render the faces at the chunk boundary.
-            // Skip faces that are adjacent to non-air voxels; they won't be visible.
-            if chunk.get_neighbor_voxel(x, y, z, direction)
-                .is_some_and(|v| !v.is_transparent())
-            {
-                continue;
+            if is_face_visible(chunk, voxel_pos, direction) {
+                let origin = voxel_pos.local_position();
+                mesh_data.add_quad(direction, origin);
             }
-
-            let face = Face { direction };
-            let origin = vec3(x as f32, y as f32, z as f32);
-
-            let start = vertices.len() as u32;
-            vertices.extend(&face.vertices(origin));
-            indices.extend(&face.indices(start));
-            normals.extend(&face.normals());
-            uvs.extend(&face.uvs());
         }
     }
 
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-        .with_inserted_indices(Indices::U32(indices))
+    mesh_data.build()
+}
+
+fn is_face_visible(chunk: &ChunkData, voxel_pos: VoxelCoord, direction: Direction) -> bool {
+    chunk.get_neighbor_voxel(voxel_pos, direction)
+        .is_none_or(VoxelType::is_transparent)
+
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {

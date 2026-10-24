@@ -85,7 +85,7 @@ enum VoxelType {
 }
 
 impl VoxelType {
-    fn is_transparent(&self) -> bool {
+    fn is_transparent(self) -> bool {
         matches!(self, VoxelType::Air)
     }
 
@@ -254,8 +254,8 @@ impl IndexMut<VoxelCoord> for ChunkData {
 
 struct MeshData<'a> {
     atlas: &'a TextureAtlasLayout,
-    vertices: Vec<Vec3>,
     indices: Vec<u32>,
+    vertices: Vec<Vec3>,
     normals: Vec<Vec3>,
     uvs: Vec<Vec2>,
 }

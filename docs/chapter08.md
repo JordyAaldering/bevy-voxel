@@ -47,3 +47,7 @@ Because the latter may also respond to changes that do not relate to the mesh, a
 However, `NeedsRemesh` seems like a very natural fit for ECS. We anyway already have an entity for the chunk: the mesh itself.
 
 Remember that, if we modify a voxel on the edge of a chunk, we also need to modify the neighbouring chunk.
+
+TODO: it seems that bevy has tables of entities, grouping them by their components. That means this entity moves around by adding and removing the NeedsRemesh component.
+Need to determine exactly how this works, and whether our approach is problematic.
+It might be that `EntityEvent` is a better approach: https://taintedcoders.com/bevy/events

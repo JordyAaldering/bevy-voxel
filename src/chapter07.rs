@@ -79,7 +79,7 @@ enum VoxelType {
 }
 
 impl VoxelType {
-    fn is_transparent(&self) -> bool {
+    fn is_transparent(self) -> bool {
         matches!(self, VoxelType::Air)
     }
 
@@ -160,8 +160,8 @@ impl IndexMut<VoxelCoord> for ChunkData {
 
 struct MeshData<'a> {
     atlas: &'a TextureAtlasLayout,
-    vertices: Vec<Vec3>,
     indices: Vec<u32>,
+    vertices: Vec<Vec3>,
     normals: Vec<Vec3>,
     uvs: Vec<Vec2>,
 }
@@ -185,15 +185,6 @@ impl<'a> MeshData<'a> {
         self.add_quad_uvs(texture);
     }
 
-    /// Adds the vertex indices for a quad (two triangles).
-    ///
-    /// Vertices are ordered as viewed from outside the voxel:
-    /// ```text
-    /// 2----3
-    /// | \  |
-    /// |  \ |
-    /// 0----1
-    /// ```
     fn add_quad_indices(&mut self, start: u32) {
         self.indices.extend([
             // First triangle
@@ -207,25 +198,6 @@ impl<'a> MeshData<'a> {
         ]);
     }
 
-    /// Returns the four vertices of the quad.
-    ///
-    /// The quad is defined by the origin and direction of the face:
-    /// ```text
-    ///     (0,1,0)-------------------(1,1,0)
-    ///          /|                  /|
-    ///         / |                 / |
-    ///        /  |                /  |
-    /// (0,1,1)-------------(1,1,1)   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |  (0,0,0)----------|--(1,0,0)
-    ///       | /                 | /
-    ///       |/                  |/
-    /// (0,0,1)-------------------(1,0,1)
-    /// ```
-    ///
-    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
     fn add_quad_vertices(&mut self, direction: Direction, o: Vec3) {
         self.vertices.extend(match direction {
             Direction::Right => [
@@ -267,12 +239,10 @@ impl<'a> MeshData<'a> {
         });
     }
 
-    /// Returns the normals of the 4 corners of the quad.
     fn add_quad_normals(&mut self, direction: Direction) {
         self.normals.extend([direction.vec3(); 4]);
     }
 
-    /// Returns the UV coordinates of the 4 corners of the quad.
     fn add_quad_uvs(&mut self, index: usize) {
         let rect = self.atlas.textures[index];
         let size = self.atlas.size.as_vec2();

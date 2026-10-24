@@ -1,4 +1,4 @@
-use bevy::math::Vec3;
+use bevy::math::{CompassQuadrant, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -60,6 +60,20 @@ impl Direction {
             Self::Bottom => Vec3::NEG_Y,
             Self::Front  => Vec3::Z,
             Self::Back   => Vec3::NEG_Z,
+        }
+    }
+}
+
+impl TryInto<CompassQuadrant> for Direction {
+    type Error = ();
+
+    fn try_into(self) -> Result<CompassQuadrant, Self::Error> {
+        match self {
+            Self::Right => Ok(CompassQuadrant::East),
+            Self::Left  => Ok(CompassQuadrant::West),
+            Self::Front => Ok(CompassQuadrant::North),
+            Self::Back  => Ok(CompassQuadrant::South),
+            _ => Err(())
         }
     }
 }
