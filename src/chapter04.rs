@@ -261,7 +261,7 @@ fn build_mesh(chunk: &ChunkData) -> Mesh {
     let mut mesh_data = MeshData::default();
 
     for (voxel_pos, _) in chunk.iter()
-        .filter(|(_, voxel)| !voxel.is_transparent())
+        .filter(|(_, v)| *v != VoxelType::Air)
     {
         for direction in Direction::iter() {
             if is_face_visible(chunk, voxel_pos, direction) {

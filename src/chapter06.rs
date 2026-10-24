@@ -53,16 +53,16 @@ impl VoxelType {
         matches!(self, VoxelType::Air)
     }
 
-    fn texture(self, direction: Direction) -> TextureAtlasPosition {
+    fn texture(self, direction: Direction) -> TextureAtlasCoord {
         match self {
             Self::Grass => {
                 match direction {
-                    Direction::Top => TextureAtlasPosition { x: 3, y: 1 },
-                    Direction::Bottom => TextureAtlasPosition { x: 1, y: 0 },
-                    _ => TextureAtlasPosition { x: 2, y: 0 },
+                    Direction::Top => TextureAtlasCoord { x: 3, y: 1 },
+                    Direction::Bottom => TextureAtlasCoord { x: 1, y: 0 },
+                    _ => TextureAtlasCoord { x: 2, y: 0 },
                 }
             },
-            Self::Dirt => TextureAtlasPosition { x: 1, y: 0 },
+            Self::Dirt => TextureAtlasCoord { x: 1, y: 0 },
             _ => unreachable!(),
         }
     }
@@ -73,18 +73,18 @@ struct TextureAtlas {
     height: usize,
 }
 
-struct TextureAtlasPosition {
+struct TextureAtlasCoord {
     x: usize,
     y: usize,
 }
 
 impl TextureAtlas {
-    fn uvs(&self, tile: TextureAtlasPosition) -> [Vec2; 4] {
+    fn uvs(&self, tile: TextureAtlasCoord) -> [Vec2; 4] {
         let tile_width = 1.0 / self.width as f32;
         let tile_height = 1.0 / self.height as f32;
         let x = tile.x as f32 * tile_width;
         let y = tile.y as f32 * tile_height;
-        // Note that the Y axis is flipped in UV coordinates, so we need to flip the Y coordinate of the tile position
+        // Note that the Y axis is flipped in UV coordinates, so we need to flip the Y coordinate of the tile
         [
             vec2(x, y + tile_height),              // Bottom left
             vec2(x + tile_width, y + tile_height), // Bottom right
@@ -153,7 +153,7 @@ impl MeshData {
         }
     }
 
-    fn add_quad(&mut self, direction: Direction, origin: Vec3, texture: TextureAtlasPosition) {
+    fn add_quad(&mut self, direction: Direction, origin: Vec3, texture: TextureAtlasCoord) {
         let start = self.vertices.len() as u32;
         self.add_quad_indices(start);
         self.add_quad_vertices(direction, origin);
@@ -219,7 +219,7 @@ impl MeshData {
         self.normals.extend([direction.vec3(); 4]);
     }
 
-    fn add_quad_uvs(&mut self, texture: TextureAtlasPosition) {
+    fn add_quad_uvs(&mut self, texture: TextureAtlasCoord) {
         self.uvs.extend(&self.atlas.uvs(texture));
     }
 
@@ -353,7 +353,7 @@ fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld) -> M
     let mut mesh_data = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter()
-        .filter(|(_, voxel)| !voxel.is_transparent())
+        .filter(|(_, v)| *v != VoxelType::Air)
     {
         for direction in Direction::iter() {
             if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {

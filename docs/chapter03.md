@@ -137,10 +137,10 @@ This gives our voxel a total of $6 \times 4 = 24$ vertices, $6 \times 2 \times 3
 
 We now have everything we need to generate our first mesh:
 
-- **Positions** describe where the vertices are.
-- **Indices** describe which vertices form each triangle.
-- **Normals** describe which way the surface faces for lighting.
-- **UV coordinates** describe how a texture maps onto the surface.
+- _Positions_ describe where the vertices are.
+- _Indices_ describe which vertices form each triangle.
+- _Normals_ describe which way the surface faces for lighting.
+- _UV coordinates_ describe how a texture maps onto the surface.
 
 We'll work backwards in constructing the mesh: we won't know what to make before we know what Bevy expects.
 We already know from the previous chapters that we need a `Mesh3d` and `MeshMaterial3d` component to render a mesh.

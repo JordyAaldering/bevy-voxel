@@ -424,7 +424,7 @@ fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld, atla
     let mut mesh_data = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter()
-        .filter(|(_, voxel)| *voxel != VoxelType::Air)
+        .filter(|(_, v)| *v != VoxelType::Air)
     {
         for direction in Direction::iter() {
             if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
