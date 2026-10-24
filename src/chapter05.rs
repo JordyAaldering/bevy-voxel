@@ -194,12 +194,15 @@ impl MeshData {
     }
 
     /// Returns the UV coordinates of the 4 corners of the quad.
+    ///
+    /// Note that the y-axis is flipped in UV coordinates, so the
+    /// bottom left voxel actually has `y = 1` in UV coordinates.
     fn add_quad_uvs(&mut self) {
         self.uvs.extend([
-            vec2(0.0, 0.0), // Bottom left
-            vec2(1.0, 0.0), // Bottom right
-            vec2(0.0, 1.0), // Top left
-            vec2(1.0, 1.0), // Top right
+            vec2(0.0, 1.0), // Bottom left
+            vec2(1.0, 1.0), // Bottom right
+            vec2(0.0, 0.0), // Top left
+            vec2(1.0, 0.0), // Top right
         ]);
     }
 

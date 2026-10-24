@@ -191,12 +191,15 @@ impl MeshData {
     }
 
     /// Returns the UV coordinates of the 4 corners of the quad.
+    ///
+    /// Note that the y-axis is flipped in UV coordinates, so the
+    /// bottom left voxel actually has `y = 1` in UV coordinates.
     fn add_quad_uvs(&mut self) {
         self.uvs.extend([
-            vec2(0.0, 0.0), // Bottom left
-            vec2(1.0, 0.0), // Bottom right
-            vec2(0.0, 1.0), // Top left
-            vec2(1.0, 1.0), // Top right
+            vec2(0.0, 1.0), // Bottom left
+            vec2(1.0, 1.0), // Bottom right
+            vec2(0.0, 0.0), // Top left
+            vec2(1.0, 0.0), // Top right
         ]);
     }
 
@@ -261,9 +264,9 @@ fn spawn_chunk(
 ) {
     let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
-    for x in 0..CHUNK_WIDTH {
+    for z in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
-            for z in 0..CHUNK_WIDTH {
+            for x in 0..CHUNK_WIDTH {
                 let idx = ChunkData::index(x, y, z);
                 chunk.voxels[idx] = VoxelType::Grass;
             }

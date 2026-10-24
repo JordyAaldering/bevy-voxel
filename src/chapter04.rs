@@ -136,12 +136,15 @@ impl Face {
     }
 
     /// Returns the UV coordinates of the 4 corners of the quad.
+    ///
+    /// Note that the y-axis is flipped in UV coordinates, so the
+    /// bottom left voxel actually has `y = 1` in UV coordinates.
     fn uvs(&self) -> [Vec2; 4] {
         [
-            vec2(0.0, 0.0), // Bottom left
-            vec2(1.0, 0.0), // Bottom right
-            vec2(0.0, 1.0), // Top left
-            vec2(1.0, 1.0), // Top right
+            vec2(0.0, 1.0), // Bottom left
+            vec2(1.0, 1.0), // Bottom right
+            vec2(0.0, 0.0), // Top left
+            vec2(1.0, 0.0), // Top right
         ]
     }
 }
@@ -239,9 +242,9 @@ fn spawn_chunk(
 ) {
     let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
-    for x in 0..CHUNK_WIDTH {
+    for z in 0..CHUNK_WIDTH {
         for y in 0..(CHUNK_HEIGHT / 2) {
-            for z in 0..CHUNK_WIDTH {
+            for x in 0..CHUNK_WIDTH {
                 let idx = ChunkData::index(x, y, z);
                 chunk.voxels[idx] = VoxelType::Grass;
             }
@@ -256,10 +259,10 @@ fn spawn_chunk(
 }
 
 fn build_mesh(chunk: &ChunkData) -> Mesh {
-    let mut vertices: Vec<Vec3> = Vec::with_capacity(6 * 4);
-    let mut indices: Vec<u32> = Vec::with_capacity(6 * 2 * 3);
-    let mut normals: Vec<Vec3> = Vec::with_capacity(6 * 4);
-    let mut uvs: Vec<Vec2> = Vec::with_capacity(6 * 4);
+    let mut vertices: Vec<Vec3> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    let mut normals: Vec<Vec3> = Vec::new();
+    let mut uvs: Vec<Vec2> = Vec::new();
 
     for (x, y, z, _) in chunk.iter()
         .filter(|(_, _, _, voxel)| *voxel != VoxelType::Air)

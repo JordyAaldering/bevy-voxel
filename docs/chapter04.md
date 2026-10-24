@@ -46,7 +46,7 @@ From what I could find, it seems that they _should_ have the same memory layout.
 A 3D array is easier to index, but the flat array is simpler to iterate over. (_Need to look more into this._)
 Pick whichever you prefer.
 
-To index into the flattnened array from an x, y, and z coordinate, we use this formula:
+To index into the flattened array from an x, y, and z coordinate, we use this formula:
 
 > `index = x + CHUNK_WIDTH * (y + CHUNK_HEIGHT * z)`
 
@@ -61,13 +61,58 @@ Putting the loops in the opposite order leads to a lot of jumping around in memo
 
 > This results in so-called [_cache misses_](https://www.geeksforgeeks.org/computer-organization-architecture/types-of-cache-misses), and inhibits the use of [_vectorization_](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data).
 
-## Spawning a chunk entity
+To determine whether a face should be shown, we need to be able to check the neighbouring voxel in that face's direction.
+That is, to determine if we should show the top face of a voxel, we check whether the voxel above it is air.
 
-...
+Add a function for this to `chunk`.
+It should receive the coordinates of the voxel, and the direction to check.
+From these inputs, determine the coordinates of the neighbouring voxel.
+For voxels on the edge of the chunk, the neighbour might not exist, so return an `Option<VoxelType>`.
 
-## Generating the chunk mesh
+## Spawning the chunk
 
-...
+Instead of a voxel, we now spawn a chunk.
+The chunk is then responsible for rendering its chunks.
+Rather than filling the chunk entirely with either air or grass, create some pattern to make it more interesting.
+
+Then, we spawn the mesh.
+Keep the transform at the origin and leave the material unchanged.
+The only difference is the mesh; create a new function for generating a mesh from a chunk, and pass it the created chunk data.
+
+We use the same basic template as in the previous chapter for building the mesh, but here we use `Vec::new` instead of `with_capacity`, because we won't know beforehand how large the mesh will be.
+
+```rust
+fn build_mesh(chunk: &ChunkData) -> Mesh {
+    let mut vertices: Vec<Vec3> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    let mut normals: Vec<Vec3> = Vec::new();
+    let mut uvs: Vec<Vec2> = Vec::new();
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
+```
+
+## Generating the mesh
+
+We build the mesh voxel-by-voxel, so start by iterating over every voxel in the chunk.
+If that voxel is air, we don't need to render anything and skip it.
+Otherwise, we have a solid voxel and might need to generate its faces, if any are visible.
+
+For each direction, get the neighbouring voxel.
+If there is no neighbouring voxel, or it is air, we need to render that face.
+
+Most of the rendering is actually the same as it was in the previous chapter.
+There is only one difference: the singular voxel was assumed to always be at the origin, but now we need to offset the face vertices by the voxel's coordinates.
+Otherwise, we would put all voxels at $(0, 0, 0)$.
+
+We already have the x, y, and z coordinates of the current voxel, so we can modify the vertex function by offsetting the generated vertices by the voxel's position.
+
+Run the game and inspect the chunk.
+If you move the camera inside the chunk, you should see that the interior is hollow.
 
 ## Refactoring meshes
 
@@ -83,139 +128,6 @@ If you put the `MeshData` in a separate file, you can more easily determine whic
 
 ---
 
-Potentially interesting sources:
-
 - [How do I efficiently store blocks in chunks?](https://www.reddit.com/r/VoxelGameDev/comments/1lynvrl/how_do_i_efficiently_store_blocks_in_chunks/)
 - [Storing voxels for a voxel engine in C](https://gamedev.stackexchange.com/questions/172119/storing-voxels-for-a-voxel-engine-in-c)
 - [Designing a voxel structure around ECS](https://discussions.unity.com/t/designing-a-voxel-structure-around-ecs/789222/4)
-
----
-
-## Generating the chunk mesh
-
-In the previous chapter, we generated all six faces of a cube.
-Now we need to do that for every voxel in the chunk.
-
-The basic algorithm is straightforward:
-
-1.
-Iterate over every voxel in the chunk.
-2.
-Skip voxels that are air.
-3.
-For each solid voxel, examine its six faces.
-4.
-Generate only the faces that need to be visible.
-
-```text
-For each voxel:
-    If it is air:
-        Skip it
-
-    For each of its six directions:
-        Check the neighbouring voxel
-
-        If the neighbour blocks this face:
-            Skip the face
-
-        Otherwise:
-            Add the face to the mesh
-```
-
-We use three nested loops to visit every coordinate in the chunk.
-For each voxel, we retrieve its type from the flat array.
-If it's air, there's nothing to render, so we move on to the next voxel.
-
-For a solid voxel, we examine each of its six directions.
-This is where our existing `Face` implementation becomes useful: we can reuse the vertex, index, normal, and UV generation from the previous chapter.
-
-The only difference is that the face vertices now need to be positioned at the voxel's coordinates rather than always at the origin.
-A face belonging to the voxel at `(2, 1, 0)`, for example, is offset by that position.
-
-We append the resulting data to the same arrays, building one mesh for the entire chunk instead of one mesh per voxel.
-
-## Removing hidden faces
-
-If we simply generate all six faces for every solid voxel, the result will work, but it will contain unnecessary geometry.
-
-Consider two grass voxels next to each other:
-
-```text
-+-------+-------+
-|       |       |
-| Grass | Grass |
-|       |       |
-+-------+-------+
-        ^
-   Shared face
-```
-
-The shared face is inside the solid block of voxels.
-The player cannot see it from outside, so there's no reason to generate it.
-
-The same applies to every face adjacent to another solid voxel.
-We only need the faces that border empty space or, in a more advanced implementation, a transparent voxel that allows us to see through it.
-
-This is often called _face culling_ in voxel meshing.
-It is different from the GPU's back-face culling discussed in the previous chapter: here, we're deciding not to create certain faces in the first place.
-
-### Finding a neighbour
-
-To determine whether a face is visible, we need to inspect the voxel immediately next to it.
-
-For example, the neighbour to the right has coordinates `(x + 1, y, z)`, while the neighbour above has coordinates `(x, y + 1, z)`.
-The other directions follow the same principle.
-
-Our `Chunk::get_neighbor_voxel` method calculates these coordinates and returns the neighbouring voxel if it lies within the chunk.
-
-Its return type is `Option<VoxelType>` because a neighbour might not exist within the current chunk.
-For example, a voxel at `x = 0` has no left neighbour _inside this chunk_.
-
-```text
-         Chunk boundary
-               |
-               v
-        +------+-------+
-        |      |       |
-        | Grass| Grass |
-        |      |       |
-        +------+-------+
-               ^
-         Check neighbour
-```
-
-There are two cases to consider:
-
-- **The neighbour is inside the chunk.** If it is solid and opaque, the shared face is hidden and we skip it.
-If it is air, we generate the face.
-- **The neighbour is outside the chunk.** We generate the face for now, because we haven't implemented communication between neighbouring chunks yet.
-
-The second case is important.
-Reaching the boundary of one chunk doesn't necessarily mean reaching the edge of the world.
-Another chunk may exist on the other side.
-We'll deal with that once we start connecting chunks together.
-
-For now, our neighbour check treats any voxel that isn't air as solid and opaque.
-If we later add water, glass, or other transparent voxel types, we'll need a more nuanced rule for deciding whether a face should be rendered.
-
-## The result
-
-Run the game and inspect the chunk.
-Instead of rendering every face of every grass voxel, we're generating only the exterior faces of the solid region.
-
-This reduces the amount of geometry substantially.
-A solid block of N voxels could have 6N faces if we generated every face independently.
-By removing shared faces, we avoid generating geometry that would be hidden inside the block.
-
-The exact savings depend on the shape of the voxel region.
-A compact solid chunk has many shared faces, while isolated voxels have few or none.
-This is one reason why generating chunk meshes is so useful for voxel games.
-
-There is still plenty of room to improve this approach.
-We currently create four vertices for every visible face, even when neighbouring faces could share vertex data.
-We also haven't considered how to handle transparent materials or neighbours across chunk boundaries.
-
-Those are separate problems, and we don't need to solve them all at once.
-The important step is that we now have a chunk data structure and a mesh-generation algorithm that can skip hidden faces.
-
-Next, we can build on this foundation to make chunks interact with each other and form a larger voxel world.
