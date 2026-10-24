@@ -261,7 +261,6 @@ fn spawn_world(
         Color::linear_rgb(0.2, 0.7, 0.3)
     );
 
-    // We need to instantiate all chunks first
     for z in -1..=1 {
         for x in -1..=1 {
             let chunk = generate_chunk(x, z);
@@ -269,9 +268,9 @@ fn spawn_world(
         }
     }
 
-    // Now we can generate the meshes
     for (&chunk_pos, chunk) in &world.chunks {
         commands.spawn((
+            Name::new(format!("Chunk {chunk_pos}")),
             Transform::from_translation(chunk_pos.position()),
             Mesh3d(meshes.add(build_mesh(chunk, chunk_pos, &world))),
             MeshMaterial3d(material.clone()),
@@ -283,7 +282,8 @@ fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
     let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
     for z in 0..CHUNK_WIDTH {
-        for y in 0..(((chunk_x + chunk_z) as usize % CHUNK_HEIGHT) + 1) {
+        let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
+        for y in 0..=max_y {
             for x in 0..CHUNK_WIDTH {
                 let pos = VoxelCoord::new(x, y, z);
                 chunk[pos] = VoxelType::Grass;
@@ -315,8 +315,6 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
     if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
         return neighbor.is_transparent();
     }
-
-    // The voxel is out of bounds of the chunk, so check the neighboring chunk instead
 
     // Chunks only exist horizontally, always show the top-most and bottom-most faces
     let Ok(compass) = direction.try_into() else {
@@ -402,17 +400,9 @@ fn chunk_debug_ui(mut contexts: EguiContexts, world: Res<VoxelWorld>) -> Result 
 
         for (position, chunk) in &world.chunks {
             let solid_voxels = chunk.voxels.iter().filter(|&&v| v == VoxelType::Grass).count();
-
             ui.collapsing(
                 format!("Chunk ({}, {})", position.x, position.z),
-               |ui| {
-                    ui.label(format!("Solid voxels: {}", solid_voxels));
-                    ui.label(format!(
-                        "World position: ({}, {})",
-                        position.x * CHUNK_WIDTH as i32,
-                        position.z * CHUNK_WIDTH as i32,
-                    ));
-                },
+               |ui| ui.label(format!("Solid voxels: {}", solid_voxels)),
             );
         }
     });

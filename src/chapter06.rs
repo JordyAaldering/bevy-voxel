@@ -9,8 +9,8 @@ use crate::{
 use std::{mem, ops::{Index, IndexMut}};
 
 use better_default::Default;
-use bevy::prelude::*;
 use bevy::{
+    prelude::*,
     asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
     math::CompassQuadrant,
@@ -18,10 +18,14 @@ use bevy::{
     platform::collections::HashMap,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::{
+    prelude::*,
+    bevy_egui::{
+        prelude::*,
+        input::EguiWantsInput,
+    },
+    quick::WorldInspectorPlugin,
+};
 
 const CHUNK_WIDTH: usize = 3;
 const CHUNK_HEIGHT: usize = 4;
@@ -234,6 +238,11 @@ struct VoxelWorld {
 }
 
 impl VoxelWorld {
+    fn add_chunk(&mut self, pos: ChunkCoord, chunk: ChunkData) {
+        debug_assert!(!self.chunks.contains_key(&pos));
+        self.chunks.insert(pos, chunk);
+    }
+
     fn get_chunk(&self, pos: ChunkCoord) -> Option<&ChunkData> {
         self.chunks.get(&pos)
     }
@@ -302,17 +311,16 @@ fn spawn_world(
         ..default()
     });
 
-    // We need to instantiate all chunks first
     for z in -1..=1 {
         for x in -1..=1 {
             let chunk = generate_chunk(x, z);
-            world.chunks.insert(ChunkCoord::new(x, z), chunk);
+            world.add_chunk(ChunkCoord::new(x, z), chunk);
         }
     }
 
-    // Now we can generate the meshes
     for (&chunk_pos, chunk) in &world.chunks {
         commands.spawn((
+            Name::new(format!("Chunk {chunk_pos}")),
             Transform::from_translation(chunk_pos.position()),
             Mesh3d(meshes.add(build_mesh(chunk, chunk_pos, &world))),
             MeshMaterial3d(material.clone()),
@@ -323,16 +331,16 @@ fn spawn_world(
 fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
     let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
-    for x in 0..CHUNK_WIDTH {
+    for z in 0..CHUNK_WIDTH {
         let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
-            for z in 0..CHUNK_WIDTH {
+            for x in 0..CHUNK_WIDTH {
                 let pos = VoxelCoord::new(x, y, z);
-                if y == max_y {
-                    chunk[pos] = VoxelType::Grass;
+                chunk[pos] = if y == max_y {
+                    VoxelType::Grass
                 } else {
-                    chunk[pos] = VoxelType::Dirt;
-                }
+                    VoxelType::Dirt
+                };
             }
         }
     }
@@ -345,15 +353,11 @@ fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld) -> M
     let mut mesh_data = MeshData::new(atlas);
 
     for (voxel_pos, voxel) in chunk.iter()
-        .filter(|(_, voxel)| *voxel != VoxelType::Air)
+        .filter(|(_, voxel)| !voxel.is_transparent())
     {
-        if voxel.is_transparent() {
-            continue;
-        }
-
         for direction in Direction::iter() {
             if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
-                let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
+                let origin = voxel_pos.local_position();
                 let texture = voxel.texture(direction);
                 mesh_data.add_quad(direction, origin, texture);
             }
@@ -367,8 +371,6 @@ fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord,
     if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
         return neighbor.is_transparent();
     }
-
-    // The voxel is out of bounds of the chunk, so check the neighboring chunk instead
 
     // Chunks only exist horizontally, always show the top-most and bottom-most faces
     let Ok(compass) = direction.try_into() else {

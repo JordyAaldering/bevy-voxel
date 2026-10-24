@@ -29,7 +29,6 @@ jobs:
           cp README.md wiki/Home.md
           cp docs/chapter*.md wiki/
           {
-            echo "- [Home](Home)"
             for file in wiki/chapter*.md; do
               name=$(basename "$file" .md)
               number=${name#chapter}

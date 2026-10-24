@@ -56,6 +56,12 @@ impl std::ops::Add<Direction> for VoxelCoord {
     }
 }
 
+impl std::fmt::Display for VoxelCoord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {}, {})", self.x, self.y, self.z)
+    }
+}
+
 /// Coordinate of a voxel in global world space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WorldCoord {
@@ -102,6 +108,12 @@ impl WorldCoord {
     }
 }
 
+impl std::fmt::Display for WorldCoord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {}, {})", self.x, self.y, self.z)
+    }
+}
+
 /// Coordinate of a chunk in the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChunkCoord {
@@ -138,5 +150,11 @@ impl std::ops::Add<CompassQuadrant> for ChunkCoord {
             CompassQuadrant::South => Self { z: self.z - 1, ..self },
             CompassQuadrant::West  => Self { x: self.x - 1, ..self },
         }
+    }
+}
+
+impl std::fmt::Display for ChunkCoord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.z)
     }
 }

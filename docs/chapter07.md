@@ -19,3 +19,5 @@ It would be convenient to still be able to go back to freecam mode, so we also a
 For physics, we need to separate player input from the physics calculation.
 We **must** run the input function every frame, because we might miss inputs.
 But the physics simulation is typically run during the `FixedUpdate` schedule.
+
+TODO: Implement physics as a plugin instead?

@@ -250,6 +250,7 @@ fn spawn_chunk(
     }
 
     commands.spawn((
+        Name::new("Chunk (0, 0)"),
         Transform::from_xyz(0.0, 0.0, 0.0),
         Mesh3d(meshes.add(build_mesh(&chunk))),
         MeshMaterial3d(materials.add(Color::linear_rgb(0.2, 0.7, 0.3))),
