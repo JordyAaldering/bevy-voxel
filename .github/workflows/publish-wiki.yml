@@ -29,8 +29,7 @@ jobs:
           cp README.md wiki/Home.md
           cp docs/chapter*.md wiki/
           {
-            echo "# Contents"
-            echo "[Home](Home)"
+            echo "- [Home](Home)"
             for file in wiki/chapter*.md; do
               name=$(basename "$file" .md)
               title=$(sed -n 's/^# //p' "$file" | head -n 1)

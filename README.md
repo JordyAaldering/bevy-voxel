@@ -30,7 +30,7 @@ If all you want is a voxel world, you could use a library like [bevy-voxel-world
 I'm no Bevy or game-design professional, so don't expect everything here to be optimal, if even correct.
 Bevy is a fast-moving target, so code might be out of date, and some solutions might not follow established Bevy conventions.
 Treat this guide as a starting point, and feel free to suggest improvements in a GitHub issue.
-If you find the guide useful, please star the repository so I know to keep working on it.
+If you find the guide useful, please star the repository, so I know to keep working on it.
 
 Before starting, I recommend reading the [Bevy introduction](https://bevy.org/news/introducing-bevy).
 It's a little outdated, but it explains the core ideas well.
@@ -54,17 +54,3 @@ In particular, the _Entity Component System_ (ECS) is an important concept, as i
 
 Only the first five chapters are complete in terms of content.
 All writing is still a work in progress.
-
----
-
-To run a specific chapter, adjust `path = "src/chapter01.rs"` in `Cargo.toml`, then:
-
-```bash
-cargo run
-```
-
-To see what changed between chapters, run:
-
-```bash
-git diff --no-index src/chapter01.rs src/chapter02.rs
-```
