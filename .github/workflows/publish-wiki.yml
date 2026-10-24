@@ -32,8 +32,9 @@ jobs:
             echo "- [Home](Home)"
             for file in wiki/chapter*.md; do
               name=$(basename "$file" .md)
+              number=${name#chapter}
               title=$(sed -n 's/^# //p' "$file" | head -n 1)
-              echo "- [${title:-$name}]($name)"
+              echo "${number}. [${title:-$name}]($name)"
             done
           } > wiki/_Sidebar.md
       - name: Publish wiki
