@@ -1,8 +1,14 @@
+
 > Give a man a voxel, and you feed him for a day. Teach a man to voxel, and you feed him for a lifetime.
 
-# Learn to build a voxel game with Rust & Bevy
+# Building a Voxel Game with Rust and Bevy
 
 ![](docs/img/screenshot.png)
+
+Learn how to build a voxel game using Rust and the Bevy game engine.
+
+This guide explores the fundamentals of voxel-engine development, from representing blocks in a 3D world to generating meshes and building a chunk-based terrain system.
+Each chapter explains the underlying concepts and design decisions, helping you understand how the systems work rather than simply copying code.
 
 There's no shortage of voxel tutorials, so why write another one?
 Because I don't want this to be just a recipe to follow.
@@ -30,8 +36,6 @@ Before starting, I recommend reading the [Bevy introduction](https://bevy.org/ne
 It's a little outdated, but it explains the core ideas well.
 In particular, the _Entity Component System_ (ECS) is an important concept, as it lies at the core of everything Bevy does.
 
->  Note: This guide is still a hot piece of garbage. Only the first five chapters are done in terms of content, but a lot of writing is still in progress.
-
 ## Chapters
 
 - [Setting the scene](docs/chapter01.md)
@@ -47,6 +51,9 @@ In particular, the _Entity Component System_ (ECS) is an important concept, as i
 - [Performance debugging](docs/chapter11.md)
 - [Editor and refactoring](docs/chapter12.md)
 - [Phase'd chunk generation](docs/chapter13.md)
+
+Only the first five chapters are complete in terms of content.
+All writing is still a work in progress.
 
 ---
 

@@ -1,0 +1,43 @@
+
+name: Publish wiki
+
+# Only run when relevant files are changed
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'docs/chapter*.md'
+      - '.github/workflows/publish-wiki.yml'
+
+# Cancel any in-progress workflows
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build wiki
+        run: |
+          mkdir wiki
+          cp README.md wiki/Home.md
+          cp docs/chapter*.md wiki/
+          {
+            echo "# Contents"
+            echo "[Home](Home)"
+            for file in wiki/chapter*.md; do
+              name=$(basename "$file" .md)
+              title=$(sed -n 's/^# //p' "$file" | head -n 1)
+              echo "- [${title:-$name}]($name)"
+            done
+          } > wiki/_Sidebar.md
+      - name: Publish wiki
+        uses: Andrew-Chen-Wang/github-wiki-action@v5
+        with:
+          path: wiki
