@@ -11,18 +11,23 @@ use crate::{
 use std::{mem, ops::{Index, IndexMut}};
 
 use better_default::Default;
-use bevy::prelude::*;
 use bevy::{
+    prelude::*,
     asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
+    math::CompassQuadrant,
     mesh::{Indices, PrimitiveTopology},
     platform::collections::HashMap,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::prelude::*;
-use bevy_inspector_egui::bevy_egui::input::EguiWantsInput;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::{
+    prelude::*,
+    bevy_egui::{
+        prelude::*,
+        input::EguiWantsInput,
+    },
+    quick::WorldInspectorPlugin,
+};
 
 const CHUNK_WIDTH: usize = 3;
 const CHUNK_HEIGHT: usize = 4;
@@ -112,21 +117,9 @@ struct ChunkData {
 
 impl ChunkData {
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
-        let VoxelCoord { x, y, z } = pos;
-
-        // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
-        // which is definitely greather than the width and height.
-        let (x, y, z) = match direction {
-            Direction::Right => (x + 1, y, z),
-            Direction::Left => (x.wrapping_sub(1), y, z),
-            Direction::Top => (x, y + 1, z),
-            Direction::Bottom => (x, y.wrapping_sub(1), z),
-            Direction::Front => (x, y, z + 1),
-            Direction::Back => (x, y, z.wrapping_sub(1)),
-        };
-
-        if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            Some(self[VoxelCoord::new(x, y, z)])
+        let neighbor_pos = pos + direction;
+        if neighbor_pos.in_bounds() {
+            Some(self[neighbor_pos])
         } else {
             None
         }
@@ -271,6 +264,15 @@ struct VoxelWorld {
 }
 
 impl VoxelWorld {
+    fn add_chunk(&mut self, pos: ChunkCoord, chunk: ChunkData) {
+        debug_assert!(!self.chunks.contains_key(&pos));
+        self.chunks.insert(pos, chunk);
+    }
+
+    fn get_chunk(&self, pos: ChunkCoord) -> Option<&ChunkData> {
+        self.chunks.get(&pos)
+    }
+
     fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
             .is_some_and(|voxel| voxel.is_solid())
@@ -286,11 +288,6 @@ impl VoxelWorld {
             let voxel_pos = pos.local_coord();
             chunk[voxel_pos]
         })
-    }
-
-    fn get_chunk_neighbor(&self, pos: ChunkCoord, dx: i32, dz: i32) -> Option<&ChunkData> {
-        let neighbor_pos = ChunkCoord::new(pos.x + dx, pos.z + dz);
-        self.chunks.get(&neighbor_pos)
     }
 }
 
@@ -313,12 +310,13 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (toggle_gamemode, player_look)
-                .run_if(is_focused),
-            move_survival
-                .run_if(is_focused.and_then(is_gamemode_survival)),
-            move_spectator
-                .run_if(is_focused.and_then(is_gamemode_spectator)),
+            (
+                toggle_gamemode,
+                player_look,
+                move_survival.run_if(is_gamemode_survival),
+                move_spectator.run_if(is_gamemode_spectator),
+            )
+            .run_if(is_focused),
         ))
         .add_systems(FixedUpdate, (
             player_physics
@@ -382,17 +380,16 @@ fn spawn_world(
         ..default()
     });
 
-    // We need to instantiate all chunks first
     for z in -1..=1 {
         for x in -1..=1 {
             let chunk = generate_chunk(x, z);
-            world.chunks.insert(ChunkCoord::new(x, z), chunk);
+            world.add_chunk(ChunkCoord::new(x, z), chunk);
         }
     }
 
-    // Now we can generate the meshes
     for (&chunk_pos, chunk) in &world.chunks {
         commands.spawn((
+            Name::new(format!("Chunk {chunk_pos}")),
             Transform::from_translation(chunk_pos.position()),
             Mesh3d(meshes.add(build_mesh(chunk, chunk_pos, &world, layout))),
             MeshMaterial3d(material.clone()),
@@ -403,16 +400,16 @@ fn spawn_world(
 fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
     let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
 
-    for x in 0..CHUNK_WIDTH {
+    for z in 0..CHUNK_WIDTH {
         let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
         for y in 0..=max_y {
-            for z in 0..CHUNK_WIDTH {
+            for x in 0..CHUNK_WIDTH {
                 let pos = VoxelCoord::new(x, y, z);
-                if y == max_y {
-                    chunk[pos] = VoxelType::Grass;
+                chunk[pos] = if y == max_y {
+                    VoxelType::Grass
                 } else {
-                    chunk[pos] = VoxelType::Dirt;
-                }
+                    VoxelType::Dirt
+                };
             }
         }
     }
@@ -427,48 +424,41 @@ fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld, atla
         .filter(|(_, v)| *v != VoxelType::Air)
     {
         for direction in Direction::iter() {
-            if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
-                if !neighbor.is_transparent() {
-                    continue;
-                }
-            } else {
-                // If get_neighbor_voxel returns None, the voxel exists in a neighboring chunk
-                let offset = match direction {
-                    Direction::Right => Some((1, 0)),
-                    Direction::Left => Some((-1, 0)),
-                    Direction::Front => Some((0, 1)),
-                    Direction::Back => Some((0, -1)),
-                    _ => None,
-                };
-
-                if let Some((dx, dz)) = offset &&
-                    let Some(neighbor_chunk) = world.get_chunk_neighbor(chunk_pos, dx, dz)
-                {
-                    let VoxelCoord { x, y, z } = voxel_pos;
-
-                    let (nx, ny, nz) = match direction {
-                        Direction::Right => (0, y, z),
-                        Direction::Left => (CHUNK_WIDTH - 1, y, z),
-                        Direction::Front => (x, y, 0),
-                        Direction::Back => (x, y, CHUNK_WIDTH - 1),
-                        _ => unreachable!(),
-                    };
-
-                    let voxel_pos = VoxelCoord::new(nx, ny, nz);
-                    let neighbor = neighbor_chunk[voxel_pos];
-                    if !neighbor.is_transparent() {
-                        continue;
-                    }
-                }
+            if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
+                let origin = voxel_pos.local_position();
+                let texture = voxel.texture(direction);
+                mesh_data.add_quad(direction, origin, texture);
             }
-
-            let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
-            let texture = voxel.texture(direction);
-            mesh_data.add_quad(direction, origin, texture);
         }
     }
 
     mesh_data.build()
+}
+
+fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord, voxel_pos: VoxelCoord, direction: Direction) -> bool {
+    if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
+        return neighbor.is_transparent();
+    }
+
+    // Chunks only exist horizontally, always show the top-most and bottom-most faces
+    let Ok(compass) = direction.try_into() else {
+        return true;
+    };
+
+    // If the chunk does not exist, we assume it is empty and show the face
+    let Some(neighbor_chunk) = world.get_chunk(chunk_pos + compass) else {
+        return true;
+    };
+
+    let neighbor_pos = match compass {
+        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
+        CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
+        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+    };
+
+    neighbor_chunk[neighbor_pos]
+        .is_transparent()
 }
 
 fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
