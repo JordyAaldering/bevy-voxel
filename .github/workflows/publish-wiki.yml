@@ -23,7 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: mkdir wiki
-      - name: Build wiki
+      - name: Build home
+        run: |
+          # Fix relative paths
+          sed 's#docs/##g' README.md > wiki/Home.md
+      - name: Build chapters
         run: |
           for file in docs/chapter*.md; do
             # Extract name and chapter number from the file name
