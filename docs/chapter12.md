@@ -14,6 +14,8 @@ That allows us to inspect the world from different angles and to check if chunks
 Bevy 0.20 added a new Pan Orbit Camera: https://bevy.org/news/bevy-0-20/#pan-orbit-camera.
 That is perfect for the editor camera.
 
+## Making an editor
+
 ## Take some time to refactor
 
 Ideally you've been refactoring your code along the way, but if not, now is a good time to do so.
