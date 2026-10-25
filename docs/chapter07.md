@@ -9,15 +9,45 @@ So add a `get_voxel(x: i32, y: i32, z: i32) -> Option<VoxelType>` function to `W
 Use the x and z coordinate to determine the coordinate of the voxel, and then adjust the x and z coordinates to chunk-local coordinates.
 We don't place chunks vertically so y can remain unchanged, just check that it remains in bounds.
 
+## Multiple game modes
+
+```rust
+enum GameMode
+```
+
+```rust
+fn toggle_gamemode
+```
+
 ## Player instance
+
+```rust
+struct Player
+
+struct PlayerCamera;
+```
 
 Create a player struct.
 It would be convenient to still be able to go back to freecam mode, so we also add an enum `CameraMode`.
 
-## Fixed Update
+## Survival player
+
+```rust
+fn move_survival
+```
+
+Nested run conditions
+
+## Physics
+
+```rust
+fn player_physics
+```
 
 For physics, we need to separate player input from the physics calculation.
 We **must** run the input function every frame, because we might miss inputs.
 But the physics simulation is typically run during the `FixedUpdate` schedule.
+
+### Plugins
 
 TODO: Implement physics as a plugin instead?
