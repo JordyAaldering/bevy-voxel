@@ -11,8 +11,7 @@ A chunk must not be meshed until its height data and the height data of all four
 This ensures that mesh generation always has the neighboring voxel data needed to decide which boundary faces are visible.
 Later remeshes keep the chunk in `Done`; they do not repeat height generation.
 
-When chunk data becomes available or changes, entity events notify that chunk and its loaded neighbours to check whether mesh generation can proceed or whether an existing mesh needs rebuilding.
-This avoids scanning every chunk each frame.
+When chunk data becomes available or changes, an entity event notifies the affected chunk, and a single global observer checks whether it can advance. Finishing height generation also notifies the four neighbours, since they may now have everything they need. Edits only notify the edited chunk and, on a border, the adjacent chunk. Nothing is polled per frame, so a chunk waiting on its neighbours costs nothing until one of them changes.
 
 With a 5x5 chunk generation area, the inner 3x3 chunks can have all four neighbours ready for mesh generation.
 The outer ring acts as a height-data buffer.

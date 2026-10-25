@@ -164,6 +164,16 @@ enum ChunkGenerationPhase {
     Done,
 }
 
+impl ChunkGenerationPhase {
+    fn next(self) -> Self {
+        match self {
+            Self::HeightGeneration => Self::MeshGeneration,
+            Self::MeshGeneration  => Self::Done,
+            Self::Done => Self::Done,
+        }
+    }
+}
+
 struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
@@ -181,22 +191,16 @@ impl ChunkData {
         }
     }
 
-    /// Completes the current phase and moves on to the next one.
-    /// Returns false if the chunk is already done.
-    fn advance_generation_phase(&mut self) -> bool {
+    /// Performs the work of the current phase, then moves on to the next one.
+    fn advance_generation_phase(&mut self) {
         match self.generation_phase {
-            ChunkGenerationPhase::HeightGeneration => {
-                generate_chunk_height(self);
-                self.generation_phase = ChunkGenerationPhase::MeshGeneration;
-            }
-            // The mesh itself is built by `remesh_chunks`, which advances the phase afterwards.
-            ChunkGenerationPhase::MeshGeneration => {
-                self.generation_phase = ChunkGenerationPhase::Done;
-            }
-            ChunkGenerationPhase::Done => return false,
+            ChunkGenerationPhase::HeightGeneration => generate_chunk_height(self),
+            // Meshing needs access to assets, so `remesh_chunks` builds the mesh
+            // and only then calls this to finish the phase.
+            ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {}
         }
 
-        true
+        self.generation_phase = self.generation_phase.next();
     }
 
     fn build_mesh(&self, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
@@ -459,9 +463,7 @@ impl VoxelWorld {
             Name::new(format!("Chunk ({}, {})", coord.x, coord.z)),
             Transform::from_translation(coord.position()),
             Chunk { coord },
-        ))
-        .observe(on_chunk_data_changed)
-        .id();
+        )).id();
 
         if let Some(chunk) = self.chunks.get_mut(&coord) {
             chunk.set_entity(entity);
@@ -493,18 +495,18 @@ impl VoxelWorld {
         let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
         chunk[voxel_pos] = voxel;
 
-        self.notify_chunk_data_changed(commands, chunk_pos);
+        self.notify_chunk(commands, chunk_pos);
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
         if voxel_pos.x == 0 {
-            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x - 1, chunk_pos.z));
+            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x - 1, chunk_pos.z));
         } else if voxel_pos.x == CHUNK_WIDTH - 1 {
-            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x + 1, chunk_pos.z));
+            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x + 1, chunk_pos.z));
         }
         if voxel_pos.z == 0 {
-            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z - 1));
+            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z - 1));
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
-            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z + 1));
+            self.notify_chunk(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z + 1));
         }
     }
 
@@ -529,17 +531,15 @@ impl VoxelWorld {
             })
     }
 
-    fn notify_chunk_data_changed(&self, commands: &mut Commands, coord: ChunkCoord) {
-        for coord in [
-            coord,
-            ChunkCoord::new(coord.x - 1, coord.z),
-            ChunkCoord::new(coord.x + 1, coord.z),
-            ChunkCoord::new(coord.x, coord.z - 1),
-            ChunkCoord::new(coord.x, coord.z + 1),
-        ] {
-            if let Some(entity) = self.chunks.get(&coord).and_then(|chunk| chunk.entity) {
-                commands.trigger(ChunkDataChanged { entity });
-            }
+    fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
+        if let Some(entity) = self.chunks.get(&coord).and_then(|chunk| chunk.entity) {
+            commands.trigger(ChunkDataChanged { entity });
+        }
+    }
+
+    fn notify_neighbors(&self, commands: &mut Commands, coord: ChunkCoord) {
+        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
         }
     }
 }
@@ -575,6 +575,7 @@ fn main() -> AppExit {
         .register_type::<DebugGizmos>()
         .init_resource::<EditorState>()
         .insert_resource(TelemetryPublisher(sender))
+        .add_observer(on_chunk_data_changed)
         .add_systems(EguiPrimaryContextPass, (
             editor::show_editor,
         ))
@@ -770,25 +771,26 @@ fn on_chunk_data_changed(
     mut world: ResMut<VoxelWorld>,
     mut commands: Commands,
 ) {
-    let Ok(chunk_entity) = chunks.get(event.entity) else {
+    let Ok(chunk) = chunks.get(event.entity) else {
         return;
     };
 
-    let Some(chunk) = world.chunks.get_mut(&chunk_entity.coord) else {
-        return;
-    };
+    let coord = chunk.coord;
+    let data = world.chunks.get_mut(&coord)
+        .expect("A chunk entity exists but its data does not");
 
-    if chunk.entity != Some(event.entity) {
+    // Ignore events for entities that have since been replaced by a reloaded chunk
+    if data.entity != Some(event.entity) {
         return;
     }
 
-    // Only the height phase is data-driven; the mesh phase is completed by `remesh_chunks`.
-    if chunk.generation_phase == ChunkGenerationPhase::HeightGeneration {
-        chunk.advance_generation_phase();
-        world.notify_chunk_data_changed(&mut commands, chunk_entity.coord);
-    } else if chunk.generation_phase >= ChunkGenerationPhase::MeshGeneration
-        && world.neighbors_ready_for_mesh(chunk_entity.coord)
-    {
+    // Height generation needs no neighbors, but finishing it may unblock them
+    if data.generation_phase == ChunkGenerationPhase::HeightGeneration {
+        data.advance_generation_phase();
+        world.notify_neighbors(&mut commands, coord);
+    }
+
+    if world.neighbors_ready_for_mesh(coord) {
         commands.entity(event.entity).insert(NeedsRemesh);
     }
 }
@@ -801,9 +803,7 @@ fn remesh_chunks(
     chunks: Query<(Entity, &Chunk, Option<&Mesh3d>), With<NeedsRemesh>>,
 ) {
     for (entity, chunk, mesh3d) in &chunks {
-        let Some(data) = world.chunks.get(&chunk.coord) else {
-            continue;
-        };
+        let data = &world.chunks[&chunk.coord];
 
         assert!(
             data.generation_phase >= ChunkGenerationPhase::MeshGeneration,
@@ -822,7 +822,6 @@ fn remesh_chunks(
             Some(handle) => {
                 if let Err(error) = meshes.insert(&handle.0, mesh) {
                     error!("Failed to update mesh for chunk {:?}: {error}", chunk.coord);
-                    continue;
                 }
             }
             None => {
@@ -830,10 +829,8 @@ fn remesh_chunks(
             }
         }
 
-        // Rebuilds of finished chunks (e.g. after an edit) stay in `Done`.
-        world.chunks.get_mut(&chunk.coord)
-            .expect("chunk data remains available while its mesh is built")
-            .advance_generation_phase();
+        // Finishes the mesh phase; rebuilds of a `Done` chunk leave it unchanged
+        world.chunks.get_mut(&chunk.coord).unwrap().advance_generation_phase();
         commands.entity(entity).remove::<NeedsRemesh>();
     }
 }
