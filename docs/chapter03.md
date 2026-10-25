@@ -100,7 +100,7 @@ To avoid this, we have to give each face its own set of normals, which gives the
 
 For the same reasons we want to bundle voxels together into one big mesh, we often also want to combine multiple smaller textures into a single image.
 
-![](../assets/blocks.png)
+![](img/blocks.png)
 
 But of course, we don't want every face to show the entire image.
 Instead, we need some way to select a specific region of the texture for different parts of the mesh.

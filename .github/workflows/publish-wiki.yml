@@ -6,9 +6,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'README.md'
-      - 'docs/chapter*.md'
       - '.github/workflows/publish-wiki.yml'
+      - 'docs/**'
 
 # Cancel any in-progress workflows
 concurrency:
@@ -23,10 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - run: mkdir wiki
       - name: Build wiki
         run: |
-          mkdir wiki
-          cp README.md wiki/Home.md
           for file in docs/chapter*.md; do
             # Extract name and chapter number from the file name
             name=$(basename "$file" .md)
@@ -41,6 +39,9 @@ jobs:
             link=$(python3 -c 'import sys; from urllib.parse import quote; print(quote(sys.argv[1], safe="-._~"))' "$page")
             echo "${number}. [${title}]($link)" >> wiki/_Sidebar.md
           done
+      - name: Copy images
+        run: |
+          cp -r docs/img wiki/img
       - name: Publish wiki
         uses: Andrew-Chen-Wang/github-wiki-action@v5
         with:
