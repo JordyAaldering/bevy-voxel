@@ -27,13 +27,20 @@ jobs:
         run: |
           mkdir wiki
           cp README.md wiki/Home.md
-          cp docs/chapter*.md wiki/
           {
-            for file in wiki/chapter*.md; do
+            for file in docs/chapter*.md; do
+              # Extract name and chapter number from the file name
               name=$(basename "$file" .md)
               number=${name#chapter}
+              # Extract the title from the first line of the file
               title=$(sed -n 's/^# //p' "$file" | head -n 1)
-              echo "${number}. [${title:-$name}]($name)"
+              title=${title:-$name}
+              # Write all but the title to the page file
+              page=${title// /-}
+              sed '1{/^# /d;}' "$file" > "wiki/$page.md"
+              # Append entry to the sidebar
+              link=$(python3 -c 'import sys; from urllib.parse import quote; print(quote(sys.argv[1], safe="-._~"))' "$page")
+              echo "${number}. [${title}]($link)"
             done
           } > wiki/_Sidebar.md
       - name: Publish wiki
