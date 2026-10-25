@@ -579,13 +579,16 @@ fn main() -> AppExit {
                     .and_then(game_view_captured)
                 ),
             draw_selected_voxel,
-            spawn_chunks_around_player,
-            retire_distant_chunks,
+            (
+                spawn_chunks_around_player,
+                retire_distant_chunks,
+            ).chain(),
         ))
         .add_systems(PostUpdate, (
-            // TODO: check if we need a constraint between these
-            despawn_retired_chunks,
-            remesh_chunks,
+            (
+                despawn_retired_chunks,
+                remesh_chunks,
+            ).chain(),
         ))
         .add_systems(FixedUpdate, (
             player_physics

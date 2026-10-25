@@ -36,7 +36,7 @@ use bevy_inspector_egui::{
 const CHUNK_WIDTH: usize = 32;
 const CHUNK_HEIGHT: usize = 64;
 
-const CHUNK_LOAD_RADIUS: i32 = 1;
+const CHUNK_LOAD_RADIUS: i32 = 2;
 
 const ATLAS_ROWS: u32 = 4;
 const ATLAS_COLUMNS: u32 = 4;
@@ -152,10 +152,16 @@ struct NeedsRemesh;
 #[derive(Component)]
 struct NeedsDespawn;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(EntityEvent)]
+struct ChunkDataChanged {
+    entity: Entity,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum ChunkGenerationPhase {
     HeightGeneration,
     MeshGeneration,
+    Done,
 }
 
 struct ChunkData {
@@ -175,6 +181,24 @@ impl ChunkData {
         }
     }
 
+    /// Completes the current phase and moves on to the next one.
+    /// Returns false if the chunk is already done.
+    fn advance_generation_phase(&mut self) -> bool {
+        match self.generation_phase {
+            ChunkGenerationPhase::HeightGeneration => {
+                generate_chunk_height(self);
+                self.generation_phase = ChunkGenerationPhase::MeshGeneration;
+            }
+            // The mesh itself is built by `remesh_chunks`, which advances the phase afterwards.
+            ChunkGenerationPhase::MeshGeneration => {
+                self.generation_phase = ChunkGenerationPhase::Done;
+            }
+            ChunkGenerationPhase::Done => return false,
+        }
+
+        true
+    }
+
     fn build_mesh(&self, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
         let mut mesh_data = MeshData::new(atlas);
 
@@ -187,7 +211,6 @@ impl ChunkData {
                         continue;
                     }
                 } else {
-                    // If get_neighbor_voxel returns None, the voxel exists in a neighboring chunk
                     let offset = match direction {
                         Direction::Right => Some((1, 0)),
                         Direction::Left => Some((-1, 0)),
@@ -196,9 +219,10 @@ impl ChunkData {
                         _ => None,
                     };
 
-                    if let Some((dx, dz)) = offset &&
-                        let Some(neighbor_chunk) = world.get_chunk_neighbor(self.coord, dx, dz)
-                    {
+                    if let Some((dx, dz)) = offset {
+                        let neighbor_chunk = world
+                            .get_chunk_neighbor(self.coord, dx, dz)
+                            .expect("mesh generation requires all neighboring chunk data");
                         let VoxelCoord { x, y, z } = voxel_pos;
 
                         let (nx, ny, nz) = match direction {
@@ -429,32 +453,24 @@ impl VoxelWorld {
             .is_some_and(|voxel| voxel.is_solid())
     }
 
-    /// Spawns an entity for the chunk at `coord`. The voxel data is generated only
-    /// if it does not exist yet, so earlier modifications survive unloading.
+    /// Spawns an entity for the chunk at `coord`, creating data if it does not exist.
     fn spawn_chunk(&mut self, commands: &mut Commands, coord: ChunkCoord) -> Entity {
         let entity = commands.spawn((
             Name::new(format!("Chunk ({}, {})", coord.x, coord.z)),
             Transform::from_translation(coord.position()),
             Chunk { coord },
-            NeedsRemesh,
-        )).id();
+        ))
+        .observe(on_chunk_data_changed)
+        .id();
 
         if let Some(chunk) = self.chunks.get_mut(&coord) {
             chunk.set_entity(entity);
         } else {
-            let mut chunk = ChunkData::new(coord, entity);
-            generate_chunk(&mut chunk);
+            let chunk = ChunkData::new(coord, entity);
             self.chunks.insert(coord, chunk);
         }
 
-        // Existing neighbors previously treated this side as open, so their border faces change
-        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-            if let Some(neighbor) = self.get_chunk_neighbor(coord, dx, dz) {
-                if let Some(neighbor_entity) = neighbor.entity {
-                    commands.entity(neighbor_entity).insert(NeedsRemesh);
-                }
-            }
-        }
+        commands.trigger(ChunkDataChanged { entity });
 
         entity
     }
@@ -477,36 +493,18 @@ impl VoxelWorld {
         let chunk = self.chunks.get_mut(&chunk_pos).unwrap();
         chunk[voxel_pos] = voxel;
 
-        if let Some(entity) = chunk.entity {
-            commands.entity(entity).insert(NeedsRemesh);
-        }
+        self.notify_chunk_data_changed(commands, chunk_pos);
 
         // Voxels on a chunk border influence the faces of the adjacent chunk
         if voxel_pos.x == 0 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, -1, 0) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
-            }
+            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x - 1, chunk_pos.z));
         } else if voxel_pos.x == CHUNK_WIDTH - 1 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 1, 0) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
-            }
+            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x + 1, chunk_pos.z));
         }
         if voxel_pos.z == 0 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, -1) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
-            }
+            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z - 1));
         } else if voxel_pos.z == CHUNK_WIDTH - 1 {
-            if let Some(neighbor) = self.get_chunk_neighbor(chunk_pos, 0, 1) {
-                if let Some(entity) = neighbor.entity {
-                    commands.entity(entity).insert(NeedsRemesh);
-                }
-            }
+            self.notify_chunk_data_changed(commands, ChunkCoord::new(chunk_pos.x, chunk_pos.z + 1));
         }
     }
 
@@ -518,6 +516,31 @@ impl VoxelWorld {
     fn is_loaded(&self, coord: ChunkCoord) -> bool {
         self.chunks.get(&coord)
             .is_some_and(|chunk| chunk.entity.is_some())
+    }
+
+    fn neighbors_ready_for_mesh(&self, coord: ChunkCoord) -> bool {
+        [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            .into_iter()
+            .all(|(dx, dz)| {
+                self.get_chunk_neighbor(coord, dx, dz)
+                    .is_some_and(|neighbor| {
+                        neighbor.generation_phase >= ChunkGenerationPhase::MeshGeneration
+                    })
+            })
+    }
+
+    fn notify_chunk_data_changed(&self, commands: &mut Commands, coord: ChunkCoord) {
+        for coord in [
+            coord,
+            ChunkCoord::new(coord.x - 1, coord.z),
+            ChunkCoord::new(coord.x + 1, coord.z),
+            ChunkCoord::new(coord.x, coord.z - 1),
+            ChunkCoord::new(coord.x, coord.z + 1),
+        ] {
+            if let Some(entity) = self.chunks.get(&coord).and_then(|chunk| chunk.entity) {
+                commands.trigger(ChunkDataChanged { entity });
+            }
+        }
     }
 }
 
@@ -587,13 +610,16 @@ fn main() -> AppExit {
                     .and_then(game_view_captured)
                 ),
             draw_selected_voxel,
-            spawn_chunks_around_player,
-            retire_distant_chunks,
+            (
+                spawn_chunks_around_player,
+                retire_distant_chunks,
+            ).chain(),
         ))
         .add_systems(PostUpdate, (
-            // TODO: check if we need a constraint between these
-            despawn_retired_chunks,
-            remesh_chunks,
+            (
+                despawn_retired_chunks,
+                remesh_chunks,
+            ).chain(),
         ))
         .add_systems(FixedUpdate, (
             player_physics
@@ -714,7 +740,7 @@ fn spawn_chunks_around_player(
     }
 }
 
-fn generate_chunk(chunk: &mut ChunkData) {
+fn generate_chunk_height(chunk: &mut ChunkData) {
     for x in 0..CHUNK_WIDTH {
         let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
 
@@ -736,13 +762,40 @@ fn generate_chunk(chunk: &mut ChunkData) {
             }
         }
     }
+}
 
-    chunk.generation_phase = ChunkGenerationPhase::MeshGeneration;
+fn on_chunk_data_changed(
+    event: On<ChunkDataChanged>,
+    chunks: Query<&Chunk>,
+    mut world: ResMut<VoxelWorld>,
+    mut commands: Commands,
+) {
+    let Ok(chunk_entity) = chunks.get(event.entity) else {
+        return;
+    };
+
+    let Some(chunk) = world.chunks.get_mut(&chunk_entity.coord) else {
+        return;
+    };
+
+    if chunk.entity != Some(event.entity) {
+        return;
+    }
+
+    // Only the height phase is data-driven; the mesh phase is completed by `remesh_chunks`.
+    if chunk.generation_phase == ChunkGenerationPhase::HeightGeneration {
+        chunk.advance_generation_phase();
+        world.notify_chunk_data_changed(&mut commands, chunk_entity.coord);
+    } else if chunk.generation_phase >= ChunkGenerationPhase::MeshGeneration
+        && world.neighbors_ready_for_mesh(chunk_entity.coord)
+    {
+        commands.entity(event.entity).insert(NeedsRemesh);
+    }
 }
 
 fn remesh_chunks(
     mut commands: Commands,
-    world: Res<VoxelWorld>,
+    mut world: ResMut<VoxelWorld>,
     atlas: Res<VoxelAtlas>,
     mut meshes: ResMut<Assets<Mesh>>,
     chunks: Query<(Entity, &Chunk, Option<&Mesh3d>), With<NeedsRemesh>>,
@@ -752,20 +805,35 @@ fn remesh_chunks(
             continue;
         };
 
-        if data.generation_phase != ChunkGenerationPhase::MeshGeneration {
-            continue;
-        }
+        assert!(
+            data.generation_phase >= ChunkGenerationPhase::MeshGeneration,
+            "Chunk {:?} was marked for remeshing before reaching mesh generation",
+            chunk.coord,
+        );
+        assert!(
+            world.neighbors_ready_for_mesh(chunk.coord),
+            "Chunk {:?} was marked for remeshing before its neighbors were ready",
+            chunk.coord,
+        );
 
         let mesh = data.build_mesh(&world, &atlas.0);
 
         match mesh3d {
             Some(handle) => {
-                let _ = meshes.insert(&handle.0, mesh);
+                if let Err(error) = meshes.insert(&handle.0, mesh) {
+                    error!("Failed to update mesh for chunk {:?}: {error}", chunk.coord);
+                    continue;
+                }
             }
             None => {
                 commands.entity(entity).insert(Mesh3d(meshes.add(mesh)));
             }
         }
+
+        // Rebuilds of finished chunks (e.g. after an edit) stay in `Done`.
+        world.chunks.get_mut(&chunk.coord)
+            .expect("chunk data remains available while its mesh is built")
+            .advance_generation_phase();
         commands.entity(entity).remove::<NeedsRemesh>();
     }
 }
