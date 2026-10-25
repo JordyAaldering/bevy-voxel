@@ -48,6 +48,11 @@ However, `NeedsRemesh` seems like a very natural fit for ECS. We anyway already 
 
 Remember that, if we modify a voxel on the edge of a chunk, we also need to modify the neighbouring chunk.
 
+### Entity events
+
 TODO: it seems that bevy has tables of entities, grouping them by their components. That means this entity moves around by adding and removing the NeedsRemesh component.
 Need to determine exactly how this works, and whether our approach is problematic.
 It might be that `EntityEvent` is a better approach: https://taintedcoders.com/bevy/events
+
+Using events has some difficulties, because we need to ensure it only happens once even if multiple sources cause a remesh, and we need to gracefully handle when a chunk is marked as dirty but is then unloaded.
+You would have to profile to be sure, but I don't think the performance hit of moving the entity to a different _archetype_ will be significant compared to the much higher cost of re-meshing.
