@@ -152,10 +152,17 @@ struct NeedsRemesh;
 #[derive(Component)]
 struct NeedsDespawn;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChunkGenerationPhase {
+    HeightGeneration,
+    MeshGeneration,
+}
+
 struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     entity: Option<Entity>,
+    generation_phase: ChunkGenerationPhase,
 }
 
 impl ChunkData {
@@ -164,6 +171,7 @@ impl ChunkData {
             coord,
             voxels: [VoxelType::Air; _],
             entity: Some(entity),
+            generation_phase: ChunkGenerationPhase::HeightGeneration,
         }
     }
 
@@ -728,6 +736,8 @@ fn generate_chunk(chunk: &mut ChunkData) {
             }
         }
     }
+
+    chunk.generation_phase = ChunkGenerationPhase::MeshGeneration;
 }
 
 fn remesh_chunks(
@@ -741,6 +751,10 @@ fn remesh_chunks(
         let Some(data) = world.chunks.get(&chunk.coord) else {
             continue;
         };
+
+        if data.generation_phase != ChunkGenerationPhase::MeshGeneration {
+            continue;
+        }
 
         let mesh = data.build_mesh(&world, &atlas.0);
 
