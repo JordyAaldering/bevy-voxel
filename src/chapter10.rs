@@ -1,22 +1,22 @@
 mod axis;
 mod coordinates;
 mod direction;
+mod meshdata;
 mod opensimplex2s;
 
 use crate::{
     axis::Axis,
     coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
     direction::Direction,
+    meshdata::MeshData,
 };
 
-use std::{mem, ops::{Index, IndexMut}};
+use std::ops::{Index, IndexMut};
 
 use better_default::Default;
 use bevy::prelude::*;
 use bevy::{
-    asset::RenderAssetUsages,
     input::mouse::AccumulatedMouseMotion,
-    mesh::{Indices, PrimitiveTopology},
     platform::collections::HashMap,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
@@ -249,143 +249,6 @@ impl Index<VoxelCoord> for ChunkData {
 impl IndexMut<VoxelCoord> for ChunkData {
     fn index_mut(&mut self, pos: VoxelCoord) -> &mut Self::Output {
         &mut self.voxels[pos.index()]
-    }
-}
-
-struct MeshData<'a> {
-    atlas: &'a TextureAtlasLayout,
-    indices: Vec<u32>,
-    vertices: Vec<Vec3>,
-    normals: Vec<Vec3>,
-    uvs: Vec<Vec2>,
-}
-
-impl<'a> MeshData<'a> {
-    fn new(atlas: &'a TextureAtlasLayout) -> Self {
-        Self {
-            atlas,
-            vertices: Vec::new(),
-            indices: Vec::new(),
-            normals: Vec::new(),
-            uvs: Vec::new(),
-        }
-    }
-
-    fn add_quad(&mut self, direction: Direction, origin: Vec3, texture: usize) {
-        let start = self.vertices.len() as u32;
-        self.add_quad_indices(start);
-        self.vertices.extend(Self::quad_vertices(direction, origin));
-        self.add_quad_normals(direction);
-        self.add_quad_uvs(texture);
-    }
-
-    /// Adds the vertex indices for a quad (two triangles).
-    ///
-    /// Vertices are ordered as viewed from outside the voxel:
-    /// ```text
-    /// 2----3
-    /// | \  |
-    /// |  \ |
-    /// 0----1
-    /// ```
-    fn add_quad_indices(&mut self, start: u32) {
-        self.indices.extend([
-            // First triangle
-            start + 0, // Bottom left
-            start + 1, // Bottom right
-            start + 2, // Top left
-            // Second triangle
-            start + 2, // Top left
-            start + 1, // Bottom right
-            start + 3, // Top right
-        ]);
-    }
-
-    /// Returns the four vertices of the quad.
-    ///
-    /// The quad is defined by the origin and direction of the face:
-    /// ```text
-    ///     (0,1,0)-------------------(1,1,0)
-    ///          /|                  /|
-    ///         / |                 / |
-    ///        /  |                /  |
-    /// (0,1,1)-------------(1,1,1)   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |   |               |   |
-    ///       |  (0,0,0)----------|--(1,0,0)
-    ///       | /                 | /
-    ///       |/                  |/
-    /// (0,0,1)-------------------(1,0,1)
-    /// ```
-    ///
-    /// Note that, in Bevy, the z axis points forward, so the going back decreases the z coordinate.
-    fn quad_vertices(direction: Direction, o: Vec3) -> [Vec3; 4] {
-        match direction {
-            Direction::Right => [
-                o + Vec3::X + Vec3::Z,
-                o + Vec3::X,
-                o + Vec3::X + Vec3::Y + Vec3::Z,
-                o + Vec3::X + Vec3::Y,
-            ],
-            Direction::Left => [
-                o,
-                o + Vec3::Z,
-                o + Vec3::Y,
-                o + Vec3::Y + Vec3::Z,
-            ],
-            Direction::Top => [
-                o + Vec3::Y + Vec3::Z,
-                o + Vec3::X + Vec3::Y + Vec3::Z,
-                o + Vec3::Y,
-                o + Vec3::X + Vec3::Y,
-            ],
-            Direction::Bottom => [
-                o,
-                o + Vec3::X,
-                o + Vec3::Z,
-                o + Vec3::X + Vec3::Z,
-            ],
-            Direction::Front => [
-                o + Vec3::Z,
-                o + Vec3::X + Vec3::Z,
-                o + Vec3::Y + Vec3::Z,
-                o + Vec3::X + Vec3::Y + Vec3::Z,
-            ],
-            Direction::Back => [
-                o + Vec3::X,
-                o,
-                o + Vec3::X + Vec3::Y,
-                o + Vec3::Y,
-            ],
-        }
-    }
-
-    /// Returns the normals of the 4 corners of the quad.
-    fn add_quad_normals(&mut self, direction: Direction) {
-        self.normals.extend([direction.vec3(); 4]);
-    }
-
-    /// Returns the UV coordinates of the 4 corners of the quad.
-    fn add_quad_uvs(&mut self, index: usize) {
-        let rect = self.atlas.textures[index];
-        let size = self.atlas.size.as_vec2();
-        let min = rect.min.as_vec2() / size;
-        let max = rect.max.as_vec2() / size;
-        self.uvs.extend([
-            vec2(min.x, max.y), // Bottom left
-            vec2(max.x, max.y), // Bottom right
-            vec2(min.x, min.y), // Top left
-            vec2(max.x, min.y), // Top right
-        ]);
-    }
-
-    fn build(&mut self) -> Mesh {
-        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, mem::take(&mut self.vertices))
-            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, mem::take(&mut self.normals))
-            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, mem::take(&mut self.uvs))
-            .with_inserted_indices(Indices::U32(mem::take(&mut self.indices)))
     }
 }
 
@@ -931,7 +794,7 @@ fn draw_selected_voxel(
     };
 
     let origin = hit.coord.position();
-    let vertices = MeshData::quad_vertices(hit.direction, origin);
+    let vertices = meshdata::quad_vertices(hit.direction, origin);
 
     gizmos.line(vertices[0], vertices[1], Color::WHITE);
     gizmos.line(vertices[1], vertices[3], Color::WHITE);
