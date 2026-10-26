@@ -8,7 +8,7 @@ Now, we will take a first step in doing so.
 
 Chunk height data and meshes are generated in separate phases, followed by a `Done` state once the initial mesh has been built.
 A chunk must not be meshed until its height data and the height data of all four horizontal neighbours are available.
-This ensures that mesh generation always has the neighboring voxel data needed to decide which boundary faces are visible.
+This ensures that mesh generation always has the neighbouring voxel data needed to decide which boundary faces are visible.
 Later remeshes keep the chunk in `Done`; they do not repeat height generation.
 
 When chunk data becomes available or changes, an entity event notifies the affected chunk, and a single global observer checks whether it can advance. Finishing height generation also notifies the four neighbours, since they may now have everything they need. Edits only notify the edited chunk and, on a border, the adjacent chunk. Nothing is polled per frame, so a chunk waiting on its neighbours costs nothing until one of them changes.

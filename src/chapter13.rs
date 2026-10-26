@@ -152,6 +152,7 @@ struct NeedsRemesh;
 #[derive(Component)]
 struct NeedsDespawn;
 
+/// Event triggered when the voxel data of a chunk has changed, requiring a remesh.
 #[derive(EntityEvent)]
 struct ChunkDataChanged {
     entity: Entity,
@@ -191,18 +192,6 @@ impl ChunkData {
         }
     }
 
-    /// Performs the work of the current phase, then moves on to the next one.
-    fn advance_generation_phase(&mut self) {
-        match self.generation_phase {
-            ChunkGenerationPhase::HeightGeneration => generate_chunk_height(self),
-            // Meshing needs access to assets, so `remesh_chunks` builds the mesh
-            // and only then calls this to finish the phase.
-            ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {}
-        }
-
-        self.generation_phase = self.generation_phase.next();
-    }
-
     fn build_mesh(&self, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
         let mut mesh_data = MeshData::new(atlas);
 
@@ -226,7 +215,7 @@ impl ChunkData {
                     if let Some((dx, dz)) = offset {
                         let neighbor_chunk = world
                             .get_chunk_neighbor(self.coord, dx, dz)
-                            .expect("mesh generation requires all neighboring chunk data");
+                            .expect("Mesh generation requires all neighboring chunk data");
                         let VoxelCoord { x, y, z } = voxel_pos;
 
                         let (nx, ny, nz) = match direction {
@@ -531,8 +520,11 @@ impl VoxelWorld {
             })
     }
 
+    /// Notifies the chunk at `coord` that its, or its neighbors' voxel data has changed.
+    /// This triggers the chunk to advance to the next generation phase, if applicable.
     fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
         if let Some(entity) = self.chunks.get(&coord).and_then(|chunk| chunk.entity) {
+            log::info!("Notifying chunk {} of voxel data change", coord);
             commands.trigger(ChunkDataChanged { entity });
         }
     }
@@ -541,6 +533,22 @@ impl VoxelWorld {
         for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
             self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
         }
+    }
+}
+
+impl Index<&Chunk> for VoxelWorld {
+    type Output = ChunkData;
+
+    fn index(&self, chunk: &Chunk) -> &Self::Output {
+        self.chunks.get(&chunk.coord)
+            .expect("A chunk entity cannot exist without its data")
+    }
+}
+
+impl IndexMut<&Chunk> for VoxelWorld {
+    fn index_mut(&mut self, chunk: &Chunk) -> &mut Self::Output {
+        self.chunks.get_mut(&chunk.coord)
+            .expect("A chunk entity cannot exist without its data")
     }
 }
 
@@ -771,28 +779,42 @@ fn on_chunk_data_changed(
     mut world: ResMut<VoxelWorld>,
     mut commands: Commands,
 ) {
+    // May be None if the chunk was despawned before the event was processed
     let Ok(chunk) = chunks.get(event.entity) else {
         return;
     };
 
     let coord = chunk.coord;
-    let data = world.chunks.get_mut(&coord)
-        .expect("A chunk entity exists but its data does not");
 
-    // Ignore events for entities that have since been replaced by a reloaded chunk
-    if data.entity != Some(event.entity) {
-        return;
-    }
+    let phase = {
+        let data = &mut world[&chunk];
 
-    // Height generation needs no neighbors, but finishing it may unblock them
-    if data.generation_phase == ChunkGenerationPhase::HeightGeneration {
-        data.advance_generation_phase();
-        world.notify_neighbors(&mut commands, coord);
-    }
+        // Ignore events for entities that have since been replaced by a reloaded chunk
+        if data.entity != Some(event.entity) {
+            return;
+        }
 
-    if world.neighbors_ready_for_mesh(coord) {
-        commands.entity(event.entity).insert(NeedsRemesh);
-    }
+        data.generation_phase
+    };
+
+    match phase {
+        ChunkGenerationPhase::HeightGeneration => {
+            log::info!("Generating height data for chunk {}", coord);
+            generate_chunk_height(&mut world[&chunk]);
+            world.notify_neighbors(&mut commands, coord);
+
+            let data = &mut world[&chunk];
+            data.generation_phase = data.generation_phase.next();
+        }
+        ChunkGenerationPhase::MeshGeneration => {
+            if world.neighbors_ready_for_mesh(coord) {
+                log::info!("Generating mesh for chunk {}", coord);
+                commands.entity(event.entity).insert(NeedsRemesh);
+                // Don't advance to the next phase yet, this will happen after the mesh is built
+            }
+        }
+        ChunkGenerationPhase::Done => {}
+    };
 }
 
 fn remesh_chunks(
@@ -807,12 +829,12 @@ fn remesh_chunks(
 
         assert!(
             data.generation_phase >= ChunkGenerationPhase::MeshGeneration,
-            "Chunk {:?} was marked for remeshing before reaching mesh generation",
+            "Chunk {} was marked for remeshing before reaching mesh generation",
             chunk.coord,
         );
         assert!(
             world.neighbors_ready_for_mesh(chunk.coord),
-            "Chunk {:?} was marked for remeshing before its neighbors were ready",
+            "Chunk {} was marked for remeshing before its neighbors were ready",
             chunk.coord,
         );
 
@@ -821,7 +843,7 @@ fn remesh_chunks(
         match mesh3d {
             Some(handle) => {
                 if let Err(error) = meshes.insert(&handle.0, mesh) {
-                    error!("Failed to update mesh for chunk {:?}: {error}", chunk.coord);
+                    error!("Failed to update mesh for chunk {}: {error}", chunk.coord);
                 }
             }
             None => {
@@ -829,8 +851,9 @@ fn remesh_chunks(
             }
         }
 
-        // Finishes the mesh phase; rebuilds of a `Done` chunk leave it unchanged
-        world.chunks.get_mut(&chunk.coord).unwrap().advance_generation_phase();
+        let data = &mut world[&chunk];
+        data.generation_phase = data.generation_phase.next();
+
         commands.entity(entity).remove::<NeedsRemesh>();
     }
 }
