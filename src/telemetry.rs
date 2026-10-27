@@ -36,7 +36,7 @@ pub async fn run_server(receiver: watch::Receiver<Telemetry>) {
         .await
         .unwrap();
 
-    log::info!("Telemetry dashboard: http://{address}");
+    info!("Telemetry dashboard: http://{address}");
 
     axum::serve(listener, app)
         .await

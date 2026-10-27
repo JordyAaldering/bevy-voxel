@@ -316,7 +316,7 @@ impl VoxelWorld {
     /// This triggers the chunk to advance to the next generation phase, if applicable.
     fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
         if let Some(entity) = self.get_chunk(coord).and_then(|chunk| chunk.entity) {
-            log::info!("Notifying chunk {} of voxel data change", coord);
+            info!("Notifying chunk {} of voxel data change", coord);
             commands.trigger(ChunkDataChanged { entity });
         }
     }
@@ -583,7 +583,7 @@ fn on_chunk_data_changed(
 
     match phase {
         ChunkGenerationPhase::HeightGeneration => {
-            log::info!("Generating height data for chunk {}", coord);
+            info!("Generating height data for chunk {}", coord);
             generate_chunk_height(&mut world[&chunk]);
             world.notify_neighbors(&mut commands, coord);
 
@@ -592,7 +592,7 @@ fn on_chunk_data_changed(
         }
         ChunkGenerationPhase::MeshGeneration => {
             if world.neighbors_ready_for_mesh(coord) {
-                log::info!("Generating mesh for chunk {}", coord);
+                info!("Generating mesh for chunk {}", coord);
                 commands.entity(event.entity).insert(NeedsRemesh);
                 // Don't advance to the next phase yet, this will happen after the mesh is built
             }
@@ -667,7 +667,7 @@ fn despawn_retired_chunks(
     retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
 ) {
     for (entity, chunk) in &retired_chunks {
-        log::info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
+        info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
         // Keep the voxel data; only the entity goes away
         if let Some(data) = world.chunks.get_mut(&chunk.coord) {
             data.entity = None;

@@ -1,6 +1,7 @@
 use crate::{CHUNK_HEIGHT, CHUNK_WIDTH, direction::Direction};
 
 use bevy::math::{CompassQuadrant, Vec3, vec3};
+use wincode::{SchemaRead, SchemaWrite};
 
 /// Chunk-local voxel coordinate.
 ///
@@ -115,7 +116,7 @@ impl std::fmt::Display for WorldCoord {
 }
 
 /// Coordinate of a chunk in the world.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, SchemaWrite, SchemaRead)]
 pub struct ChunkCoord {
     pub x: i32,
     pub z: i32,

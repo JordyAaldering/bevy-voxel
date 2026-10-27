@@ -552,7 +552,7 @@ fn despawn_retired_chunks(
     retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
 ) {
     for (entity, chunk) in &retired_chunks {
-        log::info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
+        info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
         // Keep the voxel data; only the entity goes away
         if let Some(data) = world.chunks.get_mut(&chunk.coord) {
             data.entity = None;

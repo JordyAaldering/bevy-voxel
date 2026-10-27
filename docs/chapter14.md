@@ -26,3 +26,10 @@ That means we want to use different serialization formats for each.
 For the first kind we want an efficient and compact binary format.
 The [bincode](https://crates.io/crates/bincode) crate is sadly no longer maintained, but the readme suggests some alternatives, pick the one that you prefer.
 We already use the JSON format for the telemetry server, so here I'll choose to reuse it, but any similar format would work.
+
+## Steps performed
+
+1. Enable wincode's derive feature and derive `SchemaWrite`/`SchemaRead` for chunk data types. Skip the runtime-only ECS entity field.
+2. Save each chunk to `savedata/world/chunk_<x>_<z>.bin`, and save the player's position in `savedata/world/world.bin`. Write through a temporary file before renaming it into place.
+3. When spawning a chunk, load its saved voxel data if available; otherwise create and generate a new chunk. Loaded chunks need their mesh rebuilt.
+4. Save chunks when they are unloaded and save all in-memory chunks plus the player position on application exit. Restore the player's saved position at startup.

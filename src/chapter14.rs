@@ -18,7 +18,7 @@ use crate::{
     telemetry::{Telemetry, TelemetryPublisher},
 };
 
-use std::{ops::{Index, IndexMut}, time::Duration};
+use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}, time::Duration};
 
 use better_default::Default;
 use bevy::{
@@ -28,6 +28,7 @@ use bevy_inspector_egui::{
     prelude::*,
     bevy_egui::prelude::*,
 };
+use wincode::{SchemaRead, SchemaWrite};
 
 const CHUNK_WIDTH: usize = 32;
 const CHUNK_HEIGHT: usize = 64;
@@ -42,6 +43,8 @@ const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
 
 const INTERACTION_DISTANCE: f32 = 5.0;
+
+const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
 enum GameMode {
@@ -83,7 +86,7 @@ struct DebugGizmos {
     chunk_borders: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, SchemaWrite, SchemaRead)]
 enum VoxelType {
     Air,
     Grass,
@@ -141,7 +144,7 @@ struct ChunkDataChanged {
     entity: Entity,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, SchemaWrite, SchemaRead)]
 enum ChunkGenerationPhase {
     HeightGeneration,
     MeshGeneration,
@@ -158,9 +161,11 @@ impl ChunkGenerationPhase {
     }
 }
 
+#[derive(SchemaWrite, SchemaRead)]
 struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
+    #[wincode(skip)]
     entity: Option<Entity>,
     generation_phase: ChunkGenerationPhase,
 }
@@ -172,6 +177,48 @@ impl ChunkData {
             voxels: [VoxelType::Air; _],
             entity: Some(entity),
             generation_phase: ChunkGenerationPhase::HeightGeneration,
+        }
+    }
+
+    fn path(coord: ChunkCoord) -> PathBuf {
+        Path::new(SAVE_DIR).join(format!("chunk_{}_{}.bin", coord.x, coord.z))
+    }
+
+    fn save(&self) {
+        let result = wincode::serialize(self)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| write_atomic(&Self::path(self.coord), &bytes).map_err(|e| e.to_string()));
+        if let Err(error) = result {
+            error!("Failed to save chunk {}: {error}", self.coord);
+        }
+    }
+
+    /// Returns `None` if there is no saved chunk, or it could not be read.
+    fn load(coord: ChunkCoord, entity: Entity) -> Option<Self> {
+        let bytes = match fs::read(Self::path(coord)) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
+            Err(error) => {
+                error!("Failed to read chunk {coord}: {error}");
+                return None;
+            }
+        };
+
+        match wincode::deserialize::<Self>(&bytes) {
+            Ok(mut chunk) if chunk.coord == coord => {
+                chunk.entity = Some(entity);
+                // Meshes are not saved, so a loaded chunk always has to be meshed again
+                chunk.generation_phase = chunk.generation_phase.min(ChunkGenerationPhase::MeshGeneration);
+                Some(chunk)
+            }
+            Ok(_) => {
+                error!("Saved chunk file for {coord} contains a different chunk");
+                None
+            }
+            Err(error) => {
+                error!("Failed to decode chunk {coord}: {error}");
+                None
+            }
         }
     }
 
@@ -220,6 +267,42 @@ struct VoxelWorld {
     chunks: HashMap<ChunkCoord, ChunkData>,
 }
 
+/// Global world state, stored in `world.bin`.
+#[derive(SchemaWrite, SchemaRead)]
+struct WorldSave {
+    player_position: [f32; 3],
+}
+
+impl WorldSave {
+    fn path() -> PathBuf {
+        Path::new(SAVE_DIR).join("world.bin")
+    }
+
+    fn save(&self) {
+        let result = wincode::serialize(self)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| write_atomic(&Self::path(), &bytes).map_err(|e| e.to_string()));
+        if let Err(error) = result {
+            error!("Failed to save world: {error}");
+        }
+    }
+
+    fn load() -> Option<Self> {
+        let bytes = fs::read(Self::path()).ok()?;
+        wincode::deserialize(&bytes)
+            .inspect_err(|e| error!("Failed to decode world.bin: {e}"))
+            .ok()
+    }
+}
+
+/// Writes to a temporary file first, so a crash cannot leave a half-written save.
+fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    fs::create_dir_all(SAVE_DIR)?;
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, bytes)?;
+    fs::rename(tmp, path)
+}
+
 #[derive(Resource)]
 struct VoxelAtlas(TextureAtlasLayout);
 
@@ -254,7 +337,8 @@ impl VoxelWorld {
         if let Some(chunk) = self.chunks.get_mut(&coord) {
             chunk.set_entity(entity);
         } else {
-            let chunk = ChunkData::new(coord, entity);
+            let chunk = ChunkData::load(coord, entity)
+                .unwrap_or_else(|| ChunkData::new(coord, entity));
             self.add_chunk(coord, chunk);
         }
 
@@ -316,7 +400,7 @@ impl VoxelWorld {
     /// This triggers the chunk to advance to the next generation phase, if applicable.
     fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
         if let Some(entity) = self.get_chunk(coord).and_then(|chunk| chunk.entity) {
-            log::info!("Notifying chunk {} of voxel data change", coord);
+            info!("Notifying chunk {} of voxel data change", coord);
             commands.trigger(ChunkDataChanged { entity });
         }
     }
@@ -404,6 +488,7 @@ fn main() -> AppExit {
                 remesh_chunks,
             ).chain(),
         ))
+        .add_systems(Last, save_on_exit)
         .run()
 }
 
@@ -426,11 +511,14 @@ fn spawn_player(
     editor_state: Res<EditorState>,
 ) {
     let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
+    let position = WorldSave::load()
+        .map(|save| Vec3::from(save.player_position))
+        .unwrap_or(Vec3::new(1.5, world_height as f32 + 1.0, 1.5));
 
     commands.spawn((
             Name::new("Player"),
             Player::default(),
-            Transform::from_xyz(1.5, world_height as f32 + 1.0, 1.5),
+            Transform::from_translation(position),
             InheritedVisibility::default(),
         ))
         .with_children(|commands| {
@@ -583,21 +671,21 @@ fn on_chunk_data_changed(
 
     match phase {
         ChunkGenerationPhase::HeightGeneration => {
-            log::info!("Generating height data for chunk {}", coord);
+            info!("Generating height data for chunk {}", coord);
             generate_chunk_height(&mut world[&chunk]);
             world.notify_neighbors(&mut commands, coord);
 
             let data = &mut world[&chunk];
             data.generation_phase = data.generation_phase.next();
         }
-        ChunkGenerationPhase::MeshGeneration => {
+        // A chunk that is already done may need to be meshed again, e.g. after being reloaded
+        ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
             if world.neighbors_ready_for_mesh(coord) {
-                log::info!("Generating mesh for chunk {}", coord);
+                info!("Generating mesh for chunk {}", coord);
                 commands.entity(event.entity).insert(NeedsRemesh);
                 // Don't advance to the next phase yet, this will happen after the mesh is built
             }
         }
-        ChunkGenerationPhase::Done => {}
     };
 }
 
@@ -667,14 +755,32 @@ fn despawn_retired_chunks(
     retired_chunks: Query<(Entity, &Chunk), With<NeedsDespawn>>,
 ) {
     for (entity, chunk) in &retired_chunks {
-        log::info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
+        info!("Despawning chunk ({}, {})", chunk.coord.x, chunk.coord.z);
         // Keep the voxel data; only the entity goes away
         if let Some(data) = world.chunks.get_mut(&chunk.coord) {
             data.entity = None;
+            data.save();
         }
 
         commands.entity(entity).despawn();
     }
+}
+
+fn save_on_exit(
+    mut exits: MessageReader<AppExit>,
+    world: Res<VoxelWorld>,
+    player: Single<&Transform, With<Player>>,
+) {
+    if exits.read().next().is_none() {
+        return;
+    }
+
+    info!("Saving world");
+    for chunk in world.chunks.values() {
+        chunk.save();
+    }
+
+    WorldSave { player_position: player.translation.to_array() }.save();
 }
 
 fn is_gamemode_survival(mode: Res<GameMode>) -> bool {
