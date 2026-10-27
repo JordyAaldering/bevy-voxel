@@ -10,7 +10,7 @@ use crate::{
     axis::Axis,
     coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
     direction::Direction,
-    editor::EditorState,
+    editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
     telemetry::{Telemetry, TelemetryPublisher},
 };
@@ -20,10 +20,9 @@ use std::{ops::{Index, IndexMut}, time::Duration};
 use better_default::Default;
 use bevy::{
     prelude::*,
-    camera::visibility::RenderLayers,
-    camera_controller::pan_orbit_camera::{DefaultPanOrbitCameraPlugins, SyncCameraPosition, controller::component::PanOrbitCamera},
+    camera_controller::pan_orbit_camera::DefaultPanOrbitCameraPlugins,
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
-    input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
+    input::mouse::AccumulatedMouseMotion,
     platform::collections::HashMap,
     time::common_conditions::on_timer,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
@@ -437,6 +436,7 @@ fn main() -> AppExit {
             SystemInformationDiagnosticsPlugin::default(),
             MeshPickingPlugin,
             DefaultPanOrbitCameraPlugins,
+            EditorPlugin,
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
@@ -444,28 +444,16 @@ fn main() -> AppExit {
         .register_type::<CameraSettings>()
         .init_resource::<DebugGizmos>()
         .register_type::<DebugGizmos>()
-        .init_resource::<EditorState>()
         .insert_resource(TelemetryPublisher(sender))
         .add_observer(on_chunk_data_changed)
-        .add_systems(EguiPrimaryContextPass, (
-            editor::show_editor,
-        ))
-        .add_systems(PostUpdate, (
-            editor::update_view_targets
-                .after(editor::show_editor),
-        ))
         .add_systems(Startup, (
             setup_chunk_material,
             spawn_global_illumination,
-            (editor::setup_view_targets, spawn_player)
-                .chain(),
+            spawn_player,
         ))
         .add_systems(Update, (
             telemetry::collect_telemetry
                 .run_if(on_timer(Duration::from_millis(250))),
-            editor_camera_input
-                .run_if(editor::is_editor_view_visible)
-                .before(SyncCameraPosition),
             toggle_cursor,
             draw_selected_voxel,
             (
@@ -510,36 +498,8 @@ fn spawn_global_illumination(mut commands: Commands) {
 
 fn spawn_player(
     mut commands: Commands,
-    mut egui_settings: ResMut<EguiGlobalSettings>,
     editor_state: Res<EditorState>,
 ) {
-    // Egui gets its own camera; the game cameras render to images shown inside the editor
-    egui_settings.auto_create_primary_context = false;
-    commands.spawn((
-        PrimaryEguiContext,
-        RenderLayers::none(),
-        Camera2d,
-        Camera {
-            order: 1,
-            ..default()
-        },
-    ));
-
-    commands.spawn((
-        Name::new("Editor Camera"),
-        EditorCamera,
-        Camera3d::default(),
-        Camera { is_active: false, ..default() },
-        PanOrbitCamera::default(),
-        editor_state.editor_camera_target(),
-        Projection::from(PerspectiveProjection {
-            fov: 70f32.to_radians(),
-            ..default()
-        }),
-        Transform::from_xyz(1.5, 60.0, 40.0)
-            .looking_at(vec3(1.5, 20.0, 1.5), Vec3::Y),
-    ));
-
     let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
 
     commands.spawn((
@@ -794,54 +754,6 @@ fn toggle_cursor(
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }
-}
-
-/// Right mouse button orbits, middle mouse button pans and the scroll wheel zooms, all
-/// relative to the editor view. The cursor is never captured.
-fn editor_camera_input(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mouse_motion: Res<AccumulatedMouseMotion>,
-    mouse_scroll: Res<AccumulatedMouseScroll>,
-    editor_state: Res<EditorState>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    mut camera: Single<&mut PanOrbitCamera, With<EditorCamera>>,
-) {
-    let hovered = editor_state.is_editor_view_active()
-        && window
-            .cursor_position()
-            .is_some_and(|position| editor_state.editor_view_contains(position));
-
-    let zoom = if hovered {
-        match mouse_scroll.unit {
-            MouseScrollUnit::Line => mouse_scroll.delta.y * 150.0,
-            MouseScrollUnit::Pixel => mouse_scroll.delta.y,
-        }
-    } else {
-        0.0
-    };
-
-    let zoom_finished = camera.current_motion.is_zooming_only()
-        && camera
-            .current_motion
-            .inputs()
-            .is_some_and(|inputs| inputs.zoom_velocity_abs(camera.smoothing.zoom.mul_f32(2.0)) <= 0.0);
-    if zoom_finished || mouse.any_just_released([MouseButton::Right, MouseButton::Middle]) {
-        camera.end_move();
-    }
-
-    if hovered {
-        if mouse.just_pressed(MouseButton::Right) {
-            camera.start_orbit(None);
-        } else if mouse.just_pressed(MouseButton::Middle) {
-            camera.start_pan(None);
-        } else if zoom != 0.0 && !camera.current_motion.is_user_controlled() {
-            camera.start_zoom(None);
-        }
-    }
-
-    let dragging = mouse.any_pressed([MouseButton::Right, MouseButton::Middle]);
-    camera.send_screenspace_input(if dragging { mouse_motion.delta } else { Vec2::ZERO });
-    camera.send_zoom_input(zoom);
 }
 
 fn toggle_gamemode(
