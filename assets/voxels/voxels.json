@@ -1,0 +1,21 @@
+{
+  "grass": {
+    "top": "grass_top",
+    "bottom": "dirt",
+    "sides": "grass_side"
+  },
+  "dirt": {
+    "all": "dirt"
+  },
+  "stone": {
+    "all": "stone"
+  },
+  "log": {
+    "top": "log_top",
+    "bottom": "log_top",
+    "sides": "log_side"
+  },
+  "leaves": {
+    "all": "leaves"
+  }
+}
