@@ -4,6 +4,7 @@ mod direction;
 mod editor;
 mod meshdata;
 mod opensimplex2s;
+mod raycast;
 mod telemetry;
 
 use crate::{
@@ -12,6 +13,7 @@ use crate::{
     direction::Direction,
     editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
+    raycast::VoxelHit,
     telemetry::{Telemetry, TelemetryPublisher},
 };
 
@@ -127,12 +129,6 @@ impl VoxelType {
             _ => unreachable!(),
         }
     }
-}
-
-#[derive(Debug)]
-struct VoxelHit {
-    coord: WorldCoord,
-    direction: Direction,
 }
 
 /// ECS component of a chunk.
@@ -944,10 +940,11 @@ fn draw_selected_voxel(
     world: Res<VoxelWorld>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
-    let Some(hit) = find_voxel(
+    let Some(hit) = raycast::find_voxel(
         &world,
         camera.translation(),
-        *camera.forward(),
+        camera.forward(),
+        INTERACTION_DISTANCE,
     ) else {
         return;
     };
@@ -974,9 +971,9 @@ fn break_place_block(
     }
 
     let origin = camera.translation();
-    let direction = camera.forward();
+    let look = camera.forward();
 
-    if let Some(VoxelHit { coord, direction }) = find_voxel(&world, origin, *direction) {
+    if let Some(VoxelHit { coord, direction }) = raycast::find_voxel(&world, origin, look, INTERACTION_DISTANCE) {
         info!("Hit {:?} at {:?}", coord, direction);
         if do_break {
             world.set_voxel(&mut commands, coord, VoxelType::Air);
@@ -984,106 +981,5 @@ fn break_place_block(
             let neighbor = coord.shift(direction);
             world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
         }
-    }
-}
-
-fn find_voxel(world: &VoxelWorld, origin: Vec3, direction: Vec3) -> Option<VoxelHit> {
-    let direction = direction.normalize();
-
-    let mut x = origin.x.floor() as i32;
-    let mut y = origin.y.floor() as i32;
-    let mut z = origin.z.floor() as i32;
-
-    let step_x = direction.x.signum() as i32;
-    let step_y = direction.y.signum() as i32;
-    let step_z = direction.z.signum() as i32;
-
-    let delta_x = if direction.x != 0.0 {
-        (1.0 / direction.x).abs()
-    } else {
-        f32::INFINITY
-    };
-
-    let delta_y = if direction.y != 0.0 {
-        (1.0 / direction.y).abs()
-    } else {
-        f32::INFINITY
-    };
-
-    let delta_z = if direction.z != 0.0 {
-        (1.0 / direction.z).abs()
-    } else {
-        f32::INFINITY
-    };
-
-    let mut max_x = initial_axis_distance(origin.x, direction.x);
-    let mut max_y = initial_axis_distance(origin.y, direction.y);
-    let mut max_z = initial_axis_distance(origin.z, direction.z);
-
-    loop {
-        let (distance, face) = if max_x <= max_y && max_x <= max_z {
-            x += step_x;
-
-            let distance = max_x;
-            max_x += delta_x;
-
-            let direction = if step_x > 0 {
-                Direction::Left
-            } else {
-                Direction::Right
-            };
-
-            (distance, direction)
-        } else if max_y <= max_z {
-            y += step_y;
-
-            let distance = max_y;
-            max_y += delta_y;
-
-            let direction = if step_y > 0 {
-                Direction::Bottom
-            } else {
-                Direction::Top
-            };
-
-            (distance, direction)
-        } else {
-            z += step_z;
-
-            let distance = max_z;
-            max_z += delta_z;
-
-            let direction = if step_z > 0 {
-                Direction::Back
-            } else {
-                Direction::Front
-            };
-
-            (distance, direction)
-        };
-
-        if distance > INTERACTION_DISTANCE {
-            return None;
-        }
-
-        let coord = WorldCoord::new(x, y, z);
-        if world.is_solid(coord) {
-            return Some(VoxelHit {
-                coord,
-                direction: face,
-            });
-        }
-    }
-}
-
-/// Returns the distance until the ray crosses the next voxel boundary on this axis.
-/// This is needed to determine which neighboring voxel to visit next.
-fn initial_axis_distance(origin: f32, direction: f32) -> f32 {
-    if direction > 0.0 {
-        (origin.ceil() - origin) / direction
-    } else if direction < 0.0 {
-        (origin.floor() - origin) / direction
-    } else {
-        f32::INFINITY
     }
 }
