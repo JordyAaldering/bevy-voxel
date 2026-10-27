@@ -390,6 +390,9 @@ impl VoxelWorld {
         }
 
         commands.trigger(ChunkDataChanged { entity });
+        // Loaded chunks skip height generation, which is what normally notifies neighbors.
+        // Neighbors waiting for this chunk to become available need to know it now exists.
+        self.notify_neighbors(commands, coord);
 
         entity
     }
