@@ -35,6 +35,7 @@ use bevy_inspector_egui::{
     prelude::*,
     bevy_egui::prelude::*,
 };
+use serde::{Deserialize, Serialize};
 use wincode::{SchemaRead, SchemaWrite};
 
 const CHUNK_WIDTH: usize = 32;
@@ -52,6 +53,7 @@ const MAX_PITCH: f32 = 1.4;
 const INTERACTION_DISTANCE: f32 = 5.0;
 
 const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
+const SETTINGS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
 enum GameMode {
@@ -72,8 +74,9 @@ struct PlayerCamera;
 #[derive(Component)]
 struct EditorCamera;
 
-#[derive(Default, Resource, Reflect, InspectorOptions)]
+#[derive(Default, Resource, Reflect, InspectorOptions, Serialize, Deserialize)]
 #[reflect(Resource, InspectorOptions)]
+#[serde(default)]
 struct CameraSettings {
     #[default(5.0)]
     #[inspector(min = 0.1, max = 20.0)]
@@ -84,6 +87,38 @@ struct CameraSettings {
     #[default(0.0025)]
     #[inspector(min = 0.0001, max = 0.01)]
     mouse_sensitivity: f32,
+}
+
+impl CameraSettings {
+    fn path() -> PathBuf {
+        Path::new(SETTINGS_DIR).join("camera.json")
+    }
+
+    fn save(&self) {
+        let result = serde_json::to_string_pretty(self)
+            .map_err(|e| e.to_string())
+            .and_then(|json| write_atomic(&Self::path(), json.as_bytes()).map_err(|e| e.to_string()));
+        if let Err(error) = result {
+            error!("Failed to save camera settings: {error}");
+        }
+    }
+
+    /// Falls back to the defaults if the file is missing or invalid.
+    fn load() -> Self {
+        let json = match fs::read_to_string(Self::path()) {
+            Ok(json) => json,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Self::default(),
+            Err(error) => {
+                error!("Failed to read camera.json: {error}");
+                return Self::default();
+            }
+        };
+
+        serde_json::from_str(&json).unwrap_or_else(|error| {
+            error!("Failed to parse camera.json: {error}");
+            Self::default()
+        })
+    }
 }
 
 #[derive(Default, Resource, Reflect, InspectorOptions)]
@@ -307,7 +342,9 @@ impl WorldSave {
 
 /// Writes to a temporary file first, so a crash cannot leave a half-written save.
 fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    fs::create_dir_all(SAVE_DIR)?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes)?;
     fs::rename(tmp, path)
@@ -463,7 +500,7 @@ fn main() -> AppExit {
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
-        .init_resource::<CameraSettings>()
+        .insert_resource(CameraSettings::load())
         .register_type::<CameraSettings>()
         .init_resource::<DebugGizmos>()
         .register_type::<DebugGizmos>()
@@ -796,6 +833,7 @@ fn despawn_retired_chunks(
 fn save_on_exit(
     mut exits: MessageReader<AppExit>,
     world: Res<VoxelWorld>,
+    settings: Res<CameraSettings>,
     player: Single<(&Transform, &Player)>,
     camera: Single<&Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
@@ -807,6 +845,8 @@ fn save_on_exit(
     for chunk in world.chunks.values() {
         chunk.save();
     }
+
+    settings.save();
 
     let (transform, player) = *player;
     WorldSave {
