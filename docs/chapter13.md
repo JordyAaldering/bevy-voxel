@@ -1,4 +1,4 @@
-# Phase'd chunk generation?
+# Phase'd chunk generation
 
 Before we can start adding structures, we need to make sure that the chunk generation is robust enough to handle them.
 Namely, whenever we generate a structure at a chunk boundary, we need to make sure that the structure is not cut off by the not-yet-existent neighbouring chunk.

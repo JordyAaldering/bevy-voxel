@@ -467,21 +467,15 @@ fn main() -> AppExit {
                 .run_if(editor::is_editor_view_visible)
                 .before(SyncCameraPosition),
             toggle_cursor,
-            (toggle_gamemode, player_look, break_place_block)
-                .run_if(is_focused
-                    .and_then(game_view_captured)
-                ),
-            move_survival
-                .run_if(is_focused
-                    .and_then(is_gamemode_survival)
-                    .and_then(game_view_captured)
-                ),
-            move_spectator
-                .run_if(is_focused
-                    .and_then(is_gamemode_spectator)
-                    .and_then(game_view_captured)
-                ),
             draw_selected_voxel,
+            (
+                toggle_gamemode,
+                player_look,
+                break_place_block,
+                move_survival.run_if(is_gamemode_survival),
+                move_spectator.run_if(is_gamemode_spectator),
+            )
+            .run_if(game_view_captured),
             (
                 spawn_chunks_around_player,
                 retire_distant_chunks,
@@ -537,7 +531,7 @@ fn spawn_player(
         Camera3d::default(),
         Camera { is_active: false, ..default() },
         PanOrbitCamera::default(),
-        editor::editor_camera_target(&editor_state),
+        editor_state.editor_camera_target(),
         Projection::from(PerspectiveProjection {
             fov: 70f32.to_radians(),
             ..default()
@@ -558,7 +552,7 @@ fn spawn_player(
             commands.spawn((
                 PlayerCamera,
                 Camera3d::default(),
-                editor::game_camera_target(&editor_state),
+                editor_state.game_camera_target(),
                 Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
             ));
         });
@@ -756,10 +750,6 @@ fn despawn_retired_chunks(
     }
 }
 
-fn is_focused(cursor: Single<&CursorOptions, With<PrimaryWindow>>) -> bool {
-    cursor.grab_mode == CursorGrabMode::Locked
-}
-
 fn is_gamemode_survival(mode: Res<GameMode>) -> bool {
     *mode == GameMode::Survival
 }
@@ -775,7 +765,7 @@ fn game_view_captured(
 ) -> bool {
     editor_state.is_game_view_active()
         && editor_state.is_game_view_visible()
-        && cursor.grab_mode != CursorGrabMode::None
+        && cursor.grab_mode == CursorGrabMode::Locked
 }
 
 fn toggle_cursor(
