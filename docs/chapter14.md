@@ -30,6 +30,7 @@ We already use the JSON format for the telemetry server, so here I'll choose to 
 ## Steps performed
 
 1. Enable wincode's derive feature and derive `SchemaWrite`/`SchemaRead` for chunk data types. Skip the runtime-only ECS entity field.
-2. Save each chunk to `savedata/world/chunk_<x>_<z>.bin`, and save the player's position in `savedata/world/world.bin`. Write through a temporary file before renaming it into place.
+2. Save each chunk to `savedata/world/chunk_<x>_<z>.bin`, and save the player's position, body rotation, camera rotation, and velocity in `savedata/world/world.bin`. Write through a temporary file before renaming it into place.
 3. When spawning a chunk, load its saved voxel data if available; otherwise create and generate a new chunk. Loaded chunks need their mesh rebuilt.
-4. Save chunks when they are unloaded and save all in-memory chunks plus the player position on application exit. Restore the player's saved position at startup.
+4. Save chunks when they are unloaded and save all in-memory chunks plus the player's state on application exit. Restore the saved player state at startup.
+5. Run the exit-save system in Bevy's `OnAppExitSystems` set, which runs after the window-exit system sends `AppExit`; placing it in `Last` alone can make it check before the exit message is sent.

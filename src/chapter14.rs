@@ -22,7 +22,14 @@ use std::{fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}, time::Duration}
 
 use better_default::Default;
 use bevy::{
-    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, math::CompassQuadrant, platform::collections::HashMap, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+    prelude::*,
+    app::OnAppExitSystems,
+    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
+    input::mouse::AccumulatedMouseMotion,
+    math::CompassQuadrant,
+    platform::collections::HashMap,
+    time::common_conditions::on_timer,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
     prelude::*,
@@ -271,6 +278,9 @@ struct VoxelWorld {
 #[derive(SchemaWrite, SchemaRead)]
 struct WorldSave {
     player_position: [f32; 3],
+    player_rotation: [f32; 4],
+    camera_rotation: [f32; 4],
+    player_velocity: [f32; 3],
 }
 
 impl WorldSave {
@@ -488,7 +498,7 @@ fn main() -> AppExit {
                 remesh_chunks,
             ).chain(),
         ))
-        .add_systems(Last, save_on_exit)
+        .add_systems(Last, save_on_exit.in_set(OnAppExitSystems))
         .run()
 }
 
@@ -511,14 +521,27 @@ fn spawn_player(
     editor_state: Res<EditorState>,
 ) {
     let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
-    let position = WorldSave::load()
+    let save = WorldSave::load();
+    let position = save
+        .as_ref()
         .map(|save| Vec3::from(save.player_position))
         .unwrap_or(Vec3::new(1.5, world_height as f32 + 1.0, 1.5));
+    let rotation = save
+        .as_ref()
+        .map(|save| Quat::from_array(save.player_rotation))
+        .unwrap_or(Quat::IDENTITY);
+    let camera_rotation = save
+        .as_ref()
+        .map(|save| Quat::from_array(save.camera_rotation))
+        .unwrap_or(Quat::IDENTITY);
+    let velocity = save
+        .map(|save| Vec3::from(save.player_velocity))
+        .unwrap_or(Vec3::ZERO);
 
     commands.spawn((
             Name::new("Player"),
-            Player::default(),
-            Transform::from_translation(position),
+            Player { velocity, ..default() },
+            Transform { translation: position, rotation, ..default() },
             InheritedVisibility::default(),
         ))
         .with_children(|commands| {
@@ -526,7 +549,11 @@ fn spawn_player(
                 PlayerCamera,
                 Camera3d::default(),
                 editor_state.game_camera_target(),
-                Transform::from_xyz(0.0, PLAYER_EYE_HEIGHT, 0.0),
+                Transform {
+                    translation: Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0),
+                    rotation: camera_rotation,
+                    ..default()
+                },
             ));
         });
 }
@@ -769,7 +796,8 @@ fn despawn_retired_chunks(
 fn save_on_exit(
     mut exits: MessageReader<AppExit>,
     world: Res<VoxelWorld>,
-    player: Single<&Transform, With<Player>>,
+    player: Single<(&Transform, &Player)>,
+    camera: Single<&Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
     if exits.read().next().is_none() {
         return;
@@ -780,7 +808,14 @@ fn save_on_exit(
         chunk.save();
     }
 
-    WorldSave { player_position: player.translation.to_array() }.save();
+    let (transform, player) = *player;
+    WorldSave {
+        player_position: transform.translation.to_array(),
+        player_rotation: transform.rotation.to_array(),
+        camera_rotation: camera.rotation.to_array(),
+        player_velocity: player.velocity.to_array(),
+    }
+    .save();
 }
 
 fn is_gamemode_survival(mode: Res<GameMode>) -> bool {
