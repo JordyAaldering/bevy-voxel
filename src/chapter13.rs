@@ -22,7 +22,13 @@ use std::{ops::{Index, IndexMut}, time::Duration};
 
 use better_default::Default;
 use bevy::{
-    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, math::CompassQuadrant, platform::collections::HashMap, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+    prelude::*,
+    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
+    input::mouse::AccumulatedMouseMotion,
+    math::CompassQuadrant,
+    platform::collections::HashMap,
+    time::common_conditions::on_timer,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
     prelude::*,

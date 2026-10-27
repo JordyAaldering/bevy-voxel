@@ -21,9 +21,11 @@ I'll deliberately keep the radius very small (only the chunks directly around th
 
 Although we don't have any stateful voxels yet, like furnaces or crops, now is a good point to discuss how we'll deal with this in the future.
 This is the kind of stuff you need to think about sooner rather than later, because it might influence your design. (In this case it won't)
-Turns out, the solution is actually very simple.
-We can take this minecraft mod as an example: https://modrinth.com/mod/unloaded-activity.
-Store a start time or last-update timestamp, then calculate the current state directly.
-For example, a furnace that needs 10 seconds to finish can determine whether its work is complete from elapsed time.
-This won't work for more complicated systems, like mob forms or redstone circuits, but I thought this was an interesting share.
-It shows how a simple solution can often work very well.
+I remember watching a [video](https://youtu.be/YIDbhVPHZbs) about how Terraria handles this.
+When a chunk is disabled, they store the state of all the voxels in that chunk.
+When the chunk is re-enabled, they adjust the timers for all voxels based on how long the chunk was disabled.
+At least, that's what I assumed based on the video.
+Turns out, the video was wrong (the title of the video has been renamed accordingly).
+That just goes to show you shouldn't blindly trust the first bit of information you find.
+Still, the approach is valid and elegant, and can work very well here.
+This won't work for more complicated systems, like mob forms or redstone circuits.
