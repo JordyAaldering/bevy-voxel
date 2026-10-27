@@ -20,7 +20,6 @@ use std::{ops::{Index, IndexMut}, time::Duration};
 use better_default::Default;
 use bevy::{
     prelude::*,
-    camera_controller::pan_orbit_camera::DefaultPanOrbitCameraPlugins,
     diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
     input::mouse::AccumulatedMouseMotion,
     platform::collections::HashMap,
@@ -434,8 +433,6 @@ fn main() -> AppExit {
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
-            MeshPickingPlugin,
-            DefaultPanOrbitCameraPlugins,
             EditorPlugin,
         ))
         .init_resource::<GameMode>()

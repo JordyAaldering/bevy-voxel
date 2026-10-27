@@ -12,7 +12,7 @@ use crate::{EditorCamera, PlayerCamera};
 
 use bevy::{
     prelude::*,
-    camera_controller::pan_orbit_camera::SyncCameraPosition,
+    camera_controller::pan_orbit_camera::{DefaultPanOrbitCameraPlugins, SyncCameraPosition},
     image::Image,
     render::render_resource::{Extent3d, TextureFormat},
     window::PrimaryWindow,
@@ -26,14 +26,13 @@ pub struct EditorPlugin;
 
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .init_resource::<EditorState>()
+        app.init_resource::<EditorState>()
+            .add_plugins((MeshPickingPlugin, DefaultPanOrbitCameraPlugins))
             .add_systems(PreStartup, setup_view_targets)
             .add_systems(Startup, spawn_editor_camera)
             .add_systems(EguiPrimaryContextPass, show_editor)
             .add_systems(Update, editor_camera_input.run_if(is_editor_view_visible).before(SyncCameraPosition))
-            .add_systems(PostUpdate, update_view_targets.after(show_editor))
-        ;
+            .add_systems(PostUpdate, update_view_targets.after(show_editor));
     }
 }
 
