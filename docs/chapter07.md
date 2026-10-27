@@ -99,4 +99,6 @@ But the physics simulation is typically run during the `FixedUpdate` schedule.
 
 ### Plugins
 
-TODO: Implement physics as a plugin instead?
+Implementing collections of data and systems as a plugin is a good way to keep your code organized and to separate concerns.
+Turning what we have so far into a plugin is straightforward.
+The [documentation](https://bevy.org/learn/quick-start/getting-started/plugins) explains how to do it.
