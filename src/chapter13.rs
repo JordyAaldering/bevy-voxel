@@ -22,12 +22,7 @@ use std::{ops::{Index, IndexMut}, time::Duration};
 
 use better_default::Default;
 use bevy::{
-    prelude::*,
-    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin},
-    input::mouse::AccumulatedMouseMotion,
-    platform::collections::HashMap,
-    time::common_conditions::on_timer,
-    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+    diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin}, input::mouse::AccumulatedMouseMotion, math::CompassQuadrant, platform::collections::HashMap, prelude::*, time::common_conditions::on_timer, window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_inspector_egui::{
     prelude::*,
@@ -180,78 +175,15 @@ impl ChunkData {
         }
     }
 
-    fn build_mesh(&self, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
-        let mut mesh_data = MeshData::new(atlas);
-
-        for (voxel_pos, voxel) in self.iter()
-            .filter(|(_, voxel)| *voxel != VoxelType::Air)
-        {
-            for direction in Direction::iter() {
-                if let Some(neighbor) = self.get_neighbor_voxel(voxel_pos, direction) {
-                    if !neighbor.is_transparent() {
-                        continue;
-                    }
-                } else {
-                    let offset = match direction {
-                        Direction::Right => Some((1, 0)),
-                        Direction::Left => Some((-1, 0)),
-                        Direction::Front => Some((0, 1)),
-                        Direction::Back => Some((0, -1)),
-                        _ => None,
-                    };
-
-                    if let Some((dx, dz)) = offset {
-                        let neighbor_chunk = world
-                            .get_chunk_neighbor(self.coord, dx, dz)
-                            .expect("Mesh generation requires all neighboring chunk data");
-                        let VoxelCoord { x, y, z } = voxel_pos;
-
-                        let (nx, ny, nz) = match direction {
-                            Direction::Right => (0, y, z),
-                            Direction::Left => (CHUNK_WIDTH - 1, y, z),
-                            Direction::Front => (x, y, 0),
-                            Direction::Back => (x, y, CHUNK_WIDTH - 1),
-                            _ => unreachable!(),
-                        };
-
-                        let voxel_pos = VoxelCoord::new(nx, ny, nz);
-                        let neighbor = neighbor_chunk[voxel_pos];
-                        if !neighbor.is_transparent() {
-                            continue;
-                        }
-                    }
-                }
-
-                let origin = vec3(voxel_pos.x as f32, voxel_pos.y as f32, voxel_pos.z as f32);
-                let texture = voxel.texture(direction);
-                mesh_data.add_quad(direction, origin, texture);
-            }
-        }
-
-        mesh_data.build()
-    }
-
     fn set_entity(&mut self, entity: Entity) {
         debug_assert!(self.entity.is_none());
         self.entity = Some(entity);
     }
 
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
-        let VoxelCoord { x, y, z } = pos;
-
-        // Using `wrapping_sub` ensures that the value becomes `usize::MAX`,
-        // which is definitely greather than the width and height.
-        let (x, y, z) = match direction {
-            Direction::Right => (x + 1, y, z),
-            Direction::Left => (x.wrapping_sub(1), y, z),
-            Direction::Top => (x, y + 1, z),
-            Direction::Bottom => (x, y.wrapping_sub(1), z),
-            Direction::Front => (x, y, z + 1),
-            Direction::Back => (x, y, z.wrapping_sub(1)),
-        };
-
-        if x < CHUNK_WIDTH && y < CHUNK_HEIGHT && z < CHUNK_WIDTH {
-            Some(self[VoxelCoord::new(x, y, z)])
+        let neighbor_pos = pos + direction;
+        if neighbor_pos.in_bounds() {
+            Some(self[neighbor_pos])
         } else {
             None
         }
@@ -292,9 +224,23 @@ struct VoxelWorld {
 struct VoxelAtlas(TextureAtlasLayout);
 
 impl VoxelWorld {
+    fn add_chunk(&mut self, pos: ChunkCoord, chunk: ChunkData) {
+        debug_assert!(!self.chunks.contains_key(&pos));
+        self.chunks.insert(pos, chunk);
+    }
+
+    fn get_chunk(&self, pos: ChunkCoord) -> Option<&ChunkData> {
+        self.chunks.get(&pos)
+    }
+
     fn is_solid(&self, pos: WorldCoord) -> bool {
         self.get_voxel(pos)
             .is_some_and(|voxel| voxel.is_solid())
+    }
+
+    fn is_loaded(&self, coord: ChunkCoord) -> bool {
+        self.chunks.get(&coord)
+            .is_some_and(|chunk| chunk.entity.is_some())
     }
 
     /// Spawns an entity for the chunk at `coord`, creating data if it does not exist.
@@ -309,7 +255,7 @@ impl VoxelWorld {
             chunk.set_entity(entity);
         } else {
             let chunk = ChunkData::new(coord, entity);
-            self.chunks.insert(coord, chunk);
+            self.add_chunk(coord, chunk);
         }
 
         commands.trigger(ChunkDataChanged { entity });
@@ -323,7 +269,7 @@ impl VoxelWorld {
         }
 
         let chunk_pos = pos.chunk_coord();
-        self.chunks.get(&chunk_pos).map(|chunk| {
+        self.get_chunk(chunk_pos).map(|chunk| {
             let voxel_pos = pos.local_coord();
             chunk[voxel_pos]
         })
@@ -355,11 +301,6 @@ impl VoxelWorld {
         self.chunks.get(&neighbor_pos)
     }
 
-    fn is_loaded(&self, coord: ChunkCoord) -> bool {
-        self.chunks.get(&coord)
-            .is_some_and(|chunk| chunk.entity.is_some())
-    }
-
     fn neighbors_ready_for_mesh(&self, coord: ChunkCoord) -> bool {
         [(-1, 0), (1, 0), (0, -1), (0, 1)]
             .into_iter()
@@ -374,7 +315,7 @@ impl VoxelWorld {
     /// Notifies the chunk at `coord` that its, or its neighbors' voxel data has changed.
     /// This triggers the chunk to advance to the next generation phase, if applicable.
     fn notify_chunk(&self, commands: &mut Commands, coord: ChunkCoord) {
-        if let Some(entity) = self.chunks.get(&coord).and_then(|chunk| chunk.entity) {
+        if let Some(entity) = self.get_chunk(coord).and_then(|chunk| chunk.entity) {
             log::info!("Notifying chunk {} of voxel data change", coord);
             commands.trigger(ChunkDataChanged { entity });
         }
@@ -573,6 +514,49 @@ fn generate_chunk_height(chunk: &mut ChunkData) {
     }
 }
 
+fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld, atlas: &TextureAtlasLayout) -> Mesh {
+    let mut mesh_data = MeshData::new(atlas);
+
+    for (voxel_pos, voxel) in chunk.iter()
+        .filter(|(_, v)| *v != VoxelType::Air)
+    {
+        for direction in Direction::iter() {
+            if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
+                let origin = voxel_pos.local_position();
+                let texture = voxel.texture(direction);
+                mesh_data.add_quad(direction, origin, texture);
+            }
+        }
+    }
+
+    mesh_data.build()
+}
+
+fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord, voxel_pos: VoxelCoord, direction: Direction) -> bool {
+    if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
+        return neighbor.is_transparent();
+    }
+
+    // Chunks only exist horizontally, always show the top-most and bottom-most faces
+    let Ok(compass) = direction.try_into() else {
+        return true;
+    };
+
+    // If the chunk does not exist, we assume it is empty and show the face
+    let neighbor_chunk = world.get_chunk(chunk_pos + compass)
+        .expect("Mesh generation requires all neighboring chunk data");
+
+    let neighbor_pos = match compass {
+        CompassQuadrant::North => VoxelCoord { z: 0, ..voxel_pos },
+        CompassQuadrant::East  => VoxelCoord { x: 0, ..voxel_pos },
+        CompassQuadrant::South => VoxelCoord { z: CHUNK_WIDTH - 1, ..voxel_pos },
+        CompassQuadrant::West  => VoxelCoord { x: CHUNK_WIDTH - 1, ..voxel_pos },
+    };
+
+    neighbor_chunk[neighbor_pos]
+        .is_transparent()
+}
+
 fn on_chunk_data_changed(
     event: On<ChunkDataChanged>,
     chunks: Query<&Chunk>,
@@ -638,7 +622,7 @@ fn remesh_chunks(
             chunk.coord,
         );
 
-        let mesh = data.build_mesh(&world, &atlas.0);
+        let mesh = build_mesh(data, chunk.coord, &world, &atlas.0);
 
         match mesh3d {
             Some(handle) => {
