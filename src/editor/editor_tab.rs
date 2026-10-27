@@ -23,29 +23,11 @@ pub enum EditorTab {
 }
 
 pub struct EditorTabViewer<'w> {
-    world: &'w mut World,
-    game_view: &'w mut ViewTarget,
-    editor_view: &'w mut ViewTarget,
-    selected_entities: &'w mut SelectedEntities,
-    selected_resource: &'w mut Option<(TypeId, String)>,
-}
-
-impl<'w> EditorTabViewer<'w> {
-    pub fn new(
-        world: &'w mut World,
-        game_view: &'w mut ViewTarget,
-        editor_view: &'w mut ViewTarget,
-        selected_entities: &'w mut SelectedEntities,
-        selected_resource: &'w mut Option<(TypeId, String)>,
-    ) -> Self {
-        Self {
-            world,
-            game_view,
-            editor_view,
-            selected_entities,
-            selected_resource,
-        }
-    }
+    pub world: &'w mut World,
+    pub game_view: &'w mut ViewTarget,
+    pub editor_view: &'w mut ViewTarget,
+    pub selected_entities: &'w mut SelectedEntities,
+    pub selected_resource: &'w mut Option<(TypeId, String)>,
 }
 
 impl egui_dock::TabViewer for EditorTabViewer<'_> {

@@ -84,25 +84,25 @@ impl EditorState {
     }
 
     pub fn game_camera_target(&self) -> RenderTarget {
-        self.game_view.target()
+        self.game_view.image.clone().into()
     }
 
     pub fn editor_camera_target(&self) -> RenderTarget {
-        self.editor_view.target()
+        self.editor_view.image.clone().into()
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui, world: &mut World) {
         // Only tabs that are visible this frame report a rect
-        self.game_view.clear();
-        self.editor_view.clear();
+        self.game_view.rect = None;
+        self.editor_view.rect = None;
 
-        let mut viewer = EditorTabViewer::new(
+        let mut viewer = EditorTabViewer {
             world,
-            &mut self.game_view,
-            &mut self.editor_view,
-            &mut self.selected_entities,
-            &mut self.selected_resource,
-        );
+            game_view: &mut self.game_view,
+            editor_view: &mut self.editor_view,
+            selected_entities: &mut self.selected_entities,
+            selected_resource: &mut self.selected_resource,
+        };
 
         DockArea::new(&mut self.state)
             .style(Style::from_egui(&ui.global_style()))

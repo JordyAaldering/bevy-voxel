@@ -82,7 +82,7 @@ fn create_view_target(images: &mut Assets<Image>, egui_textures: &mut EguiUserTe
         None,
     ));
     let texture = egui_textures.add_image(EguiTextureHandle::Strong(image.clone()));
-    ViewTarget::new(image, texture)
+    ViewTarget { image, texture, rect: None }
 }
 
 /// Resizes each camera's image to match its tab, and disables cameras whose tab is hidden
@@ -111,7 +111,7 @@ fn update_view_target(
 
     camera.is_active = true;
 
-    if let Some(mut image) = images.get_mut(view.id()) {
+    if let Some(mut image) = images.get_mut(&view.image) {
         if image.size() != size {
             image.resize(Extent3d {
                 width: size.x,
