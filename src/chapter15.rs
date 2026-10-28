@@ -69,6 +69,7 @@ impl Default for TerrainConfig {
             height: NoiseSettings {
                 amplitude: 10.0,
                 frequency: 0.01,
+                bias: 20.0,
                 ..default()
             },
         }
