@@ -1,6 +1,4 @@
-# Trees, finally!
-
-## Some setup
+# Scaling voxel types
 
 We only have grass, dirt, and stone, so add new voxel types for logs and leaves.
 My spritesheet does not have a leaf texture, so I need to replace it.
@@ -16,7 +14,7 @@ Another problem is that leaves might be see-through.
 We'll ignore that for now, and just pick a texture that is not transparent.
 Solving this is actually quite tricky, and needs some shader work, which probably will deserve its own chapter.
 
-### Steps performed
+## Steps performed
 
 1. **Split the spritesheet.** The separate images live in `assets/voxels/`, and `blocks.png` is no longer used.
 2. **Add the voxel types.** `VoxelType` gets `Log` and `Leaves`, appended at the end so existing saved chunks stay valid.
@@ -46,8 +44,3 @@ Solving this is actually quite tricky, and needs some shader work, which probabl
    `VoxelAtlas::texture(voxel, direction)` replaces the old hardcoded `VoxelType::texture`, and the `ATLAS_*` constants are removed.
 9. **Use it.** `setup_chunk_material` calls `build_voxel_atlas`, uses the resulting image as the material's `base_color_texture`, and inserts `VoxelAtlas` as a resource.
    `build_mesh` now takes `&VoxelAtlas`, and passes `atlas.layout` to `MeshData` for the UV calculation.
-
-## Trees, finally? Finally!
-
-At least, I hope I'll be able to add trees in this chapter.
-I'm really looking forward to a less boring world.

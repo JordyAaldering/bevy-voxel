@@ -3,7 +3,7 @@ mod coordinates;
 mod direction;
 mod editor;
 mod meshdata;
-mod opensimplex2s;
+mod noise;
 mod physics;
 mod raycast;
 mod telemetry;
@@ -13,6 +13,7 @@ use crate::{
     direction::Direction,
     editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
+    noise::NoiseSettings,
     physics::PhysicsPlugin,
     raycast::VoxelHit,
     telemetry::{Telemetry, TelemetryPublisher},
@@ -54,6 +55,25 @@ const INTERACTION_DISTANCE: f32 = 5.0;
 
 const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
 const SETTINGS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
+
+#[derive(Resource)]
+struct TerrainConfig {
+    seed: i64,
+    height: NoiseSettings,
+}
+
+impl Default for TerrainConfig {
+    fn default() -> Self {
+        Self {
+            seed: 0,
+            height: NoiseSettings {
+                amplitude: 10.0,
+                frequency: 0.01,
+                ..default()
+            },
+        }
+    }
+}
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Resource)]
 enum GameMode {
@@ -581,6 +601,7 @@ fn main() -> AppExit {
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
+        .init_resource::<TerrainConfig>()
         .insert_resource(CameraSettings::load())
         .register_type::<CameraSettings>()
         .init_resource::<DebugGizmos>()
@@ -637,13 +658,16 @@ fn spawn_global_illumination(mut commands: Commands) {
 fn spawn_player(
     mut commands: Commands,
     editor_state: Res<EditorState>,
+    config: Res<TerrainConfig>,
 ) {
-    let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
     let save = WorldSave::load();
     let position = save
         .as_ref()
         .map(|save| Vec3::from(save.player_position))
-        .unwrap_or(Vec3::new(1.5, world_height as f32 + 1.0, 1.5));
+        .unwrap_or_else(|| {
+            let world_height = config.height.sample(config.seed, 0.0, 0.0);
+            Vec3::new(1.5, world_height as f32 + 1.0, 1.5)
+        });
     let rotation = save
         .as_ref()
         .map(|save| Quat::from_array(save.player_rotation))
@@ -718,14 +742,14 @@ fn spawn_chunks_around_player(
     }
 }
 
-fn generate_chunk_height(chunk: &mut ChunkData) {
+fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
     for x in 0..CHUNK_WIDTH {
         let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
 
         for z in 0..CHUNK_WIDTH {
             let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-            let height = (opensimplex2s::noise2d(0, world_x as f64 / 100.0, world_z as f64 / 100.0) * 10.0) as i32 + 20;
+            let height = config.height.sample(config.seed, world_x as f32, world_z as f32) as i32;
             let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
 
             // Top layer is grass
@@ -790,6 +814,7 @@ fn on_chunk_data_changed(
     chunks: Query<&Chunk>,
     mut world: ResMut<VoxelWorld>,
     mut commands: Commands,
+    config: Res<TerrainConfig>,
 ) {
     // May be None if the chunk was despawned before the event was processed
     let Ok(chunk) = chunks.get(event.entity) else {
@@ -812,7 +837,7 @@ fn on_chunk_data_changed(
     match phase {
         ChunkGenerationPhase::HeightGeneration => {
             info!("Generating height data for chunk {}", coord);
-            generate_chunk_height(&mut world[&chunk]);
+            generate_chunk_height(&mut world[&chunk], &config);
             world.notify_neighbors(&mut commands, coord);
 
             let data = &mut world[&chunk];

@@ -64,6 +64,9 @@ I deliberately use the `examples` folder.
 I don't put it in the main sources, because I don't want to ship the `image` crate with the game.
 The `tests` folder is not suitable, because it is intended for many unit and integration tests run in parallel, not for visualizing an output.
 
+When our editor becomes more capable, this visualization can also be moved into the game.
+That would allow us to play around with settings and visualize the results directly.
+
 Turns out, there's a subtle difference in C# and Rust.
 In C#, the default overflow behaviour is to silently wrap the value.
 In the case of Rust, overflows will always cause a panic.
