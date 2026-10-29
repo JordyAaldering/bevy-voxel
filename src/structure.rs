@@ -1,4 +1,4 @@
-use crate::{VoxelType, direction::Direction};
+use crate::{VoxelType, aabb::Aabb, coordinates::WorldCoord, direction::Direction};
 
 /// Set a coordinate to air to require that space to be cleared by the structure,
 /// otherwise if there happens to be any voxels already at that position it remains.
@@ -11,10 +11,32 @@ pub struct Structure {
     pub voxels: Vec<StructureVoxel>,
 }
 
+impl Structure {
+    /// Bounding box of this structure.
+    pub fn aabb(&self) -> Aabb {
+        let mut min = WorldCoord::ZERO;
+        let mut max = WorldCoord::ZERO;
+
+        for voxel in &self.voxels {
+            let WorldCoord { x, y, z } = voxel.pos;
+
+            min.x = min.x.min(x);
+            min.y = min.y.min(y);
+            min.z = min.z.min(z);
+
+            max.x = max.x.max(x);
+            max.y = max.y.max(y);
+            max.z = max.z.max(z);
+        }
+
+        Aabb { min, max }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct StructureVoxel {
     /// Offset relative to the structure origin (can be negative).
-    pub pos: [i32; 3],
+    pub pos: WorldCoord,
     pub voxel: VoxelType,
     /// Orientation, for voxels that have one (e.g. logs).
     #[serde(default, skip_serializing_if = "Option::is_none")]

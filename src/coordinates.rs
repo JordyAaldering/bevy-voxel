@@ -65,6 +65,8 @@ impl std::fmt::Display for VoxelCoord {
 
 /// Coordinate of a voxel in global world space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(from = "[i32; 3]", into = "[i32; 3]")]
 pub struct WorldCoord {
     pub x: i32,
     pub y: i32,
@@ -73,6 +75,8 @@ pub struct WorldCoord {
 
 #[allow(dead_code)]
 impl WorldCoord {
+    pub const ZERO: Self = Self { x: 0, y: 0, z: 0 };
+
     pub const fn new(x: i32, y: i32, z: i32) -> Self {
         Self { x, y, z }
     }
@@ -106,6 +110,18 @@ impl WorldCoord {
             y: self.y + dy,
             z: self.z + dz,
         }
+    }
+}
+
+impl From<[i32; 3]> for WorldCoord {
+    fn from([x, y, z]: [i32; 3]) -> Self {
+        Self { x, y, z }
+    }
+}
+
+impl From<WorldCoord> for [i32; 3] {
+    fn from(coord: WorldCoord) -> Self {
+        [coord.x, coord.y, coord.z]
     }
 }
 
