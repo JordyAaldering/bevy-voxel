@@ -18,6 +18,7 @@ use crate::{
     noise::NoiseSettings,
     physics::PhysicsPlugin,
     raycast::VoxelHit,
+    structure::Structure,
     telemetry::{Telemetry, TelemetryPublisher},
 };
 
@@ -46,9 +47,18 @@ use wincode::{SchemaRead, SchemaWrite};
 const CHUNK_WIDTH: usize = 32;
 const CHUNK_HEIGHT: usize = 64;
 
-const CHUNK_LOAD_RADIUS: i32 = 2;
+// Meshing a chunk needs structures generated in all 8 neighbours, which in turn need terrain in their
+// neighbours, so the outermost two rings of loaded chunks are not meshed.
+const CHUNK_LOAD_RADIUS: i32 = 3;
 
 const VOXELS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/voxels");
+const STRUCTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
+
+const CHUNK_NEIGHBORS: [(i32, i32); 8] = [
+    (-1, -1), (0, -1), (1, -1),
+    (-1,  0),          (1,  0),
+    (-1,  1), (0,  1), (1,  1),
+];
 
 const PLAYER_EYE_HEIGHT: f32 = 1.6;
 const MAX_PITCH: f32 = 1.4;
@@ -75,6 +85,24 @@ impl Default for TerrainConfig {
                 ..default()
             },
         }
+    }
+}
+
+/// Structures loaded from `assets/structures`.
+#[derive(Resource)]
+struct Structures {
+    tree: Structure,
+}
+
+impl Structures {
+    fn load() -> Result<Self, String> {
+        Ok(Self { tree: Self::load_structure("tree")? })
+    }
+
+    fn load_structure(name: &str) -> Result<Structure, String> {
+        let path = Path::new(STRUCTURES_DIR).join(format!("{name}.json"));
+        let json = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        serde_json::from_str(&json).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 
@@ -228,6 +256,7 @@ struct ChunkDataChanged {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, SchemaWrite, SchemaRead)]
 enum ChunkGenerationPhase {
     HeightGeneration,
+    GenerateStructures,
     MeshGeneration,
     Done,
 }
@@ -235,7 +264,8 @@ enum ChunkGenerationPhase {
 impl ChunkGenerationPhase {
     fn next(self) -> Self {
         match self {
-            Self::HeightGeneration => Self::MeshGeneration,
+            Self::HeightGeneration => Self::GenerateStructures,
+            Self::GenerateStructures => Self::MeshGeneration,
             Self::MeshGeneration  => Self::Done,
             Self::Done => Self::Done,
         }
@@ -537,15 +567,38 @@ impl VoxelWorld {
         self.chunks.get(&neighbor_pos)
     }
 
-    fn neighbors_ready_for_mesh(&self, coord: ChunkCoord) -> bool {
-        [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    fn neighbors_reached(&self, coord: ChunkCoord, phase: ChunkGenerationPhase) -> bool {
+        CHUNK_NEIGHBORS
             .into_iter()
             .all(|(dx, dz)| {
                 self.get_chunk_neighbor(coord, dx, dz)
-                    .is_some_and(|neighbor| {
-                        neighbor.generation_phase >= ChunkGenerationPhase::MeshGeneration
-                    })
+                    .is_some_and(|neighbor| neighbor.generation_phase >= phase)
             })
+    }
+
+    /// Structures write into neighbouring chunks, so those need their terrain first.
+    fn neighbors_ready_for_structures(&self, coord: ChunkCoord) -> bool {
+        self.neighbors_reached(coord, ChunkGenerationPhase::GenerateStructures)
+    }
+
+    /// Structures of any neighbour may have overflowed into this chunk, so those need to be done first.
+    fn neighbors_ready_for_mesh(&self, coord: ChunkCoord) -> bool {
+        self.neighbors_reached(coord, ChunkGenerationPhase::MeshGeneration)
+    }
+
+    /// Writes the structure into the world, without triggering remeshes.
+    /// Structures cannot extend further than one chunk away from their origin.
+    fn place_structure(&mut self, structure: &Structure, origin: WorldCoord) {
+        for voxel in &structure.voxels {
+            let coord = origin + voxel.pos;
+            if coord.y < 0 || coord.y >= CHUNK_HEIGHT as i32 {
+                continue;
+            }
+
+            let chunk = self.chunks.get_mut(&coord.chunk_coord())
+                .expect("Structure generation requires all neighboring chunk data");
+            chunk[coord.local_coord()] = voxel.voxel;
+        }
     }
 
     /// Notifies the chunk at `coord` that its, or its neighbors' voxel data has changed.
@@ -558,7 +611,7 @@ impl VoxelWorld {
     }
 
     fn notify_neighbors(&self, commands: &mut Commands, coord: ChunkCoord) {
-        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+        for (dx, dz) in CHUNK_NEIGHBORS {
             self.notify_chunk(commands, ChunkCoord::new(coord.x + dx, coord.z + dz));
         }
     }
@@ -606,6 +659,7 @@ fn main() -> AppExit {
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
         .init_resource::<TerrainConfig>()
+        .insert_resource(Structures::load().unwrap_or_else(|e| panic!("Failed to load structures: {e}")))
         .insert_resource(CameraSettings::load())
         .register_type::<CameraSettings>()
         .init_resource::<DebugGizmos>()
@@ -746,6 +800,12 @@ fn spawn_chunks_around_player(
     }
 }
 
+/// Height of the top-most (grass) voxel at the given world column.
+fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
+    let height = config.height.sample(config.seed, world_x as f32, world_z as f32) as i32;
+    (height as usize).clamp(0, CHUNK_HEIGHT - 1)
+}
+
 fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
     for x in 0..CHUNK_WIDTH {
         let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
@@ -753,8 +813,7 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
         for z in 0..CHUNK_WIDTH {
             let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-            let height = config.height.sample(config.seed, world_x as f32, world_z as f32) as i32;
-            let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
+            let height = terrain_height(config, world_x, world_z);
 
             // Top layer is grass
             chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
@@ -767,6 +826,24 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
                 chunk[VoxelCoord::new(x, y, z)] = VoxelType::Stone;
             }
         }
+    }
+}
+
+fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &TerrainConfig, structures: &Structures) {
+    /// Local (x, z) columns of each chunk that get a tree: one in the middle, and one in the corner
+    /// whose leaves overflow into three neighbouring chunks.
+    const TREE_COLUMNS: [(usize, usize); 2] = [
+        (CHUNK_WIDTH / 2, CHUNK_WIDTH / 2),
+        (CHUNK_WIDTH - 1, CHUNK_WIDTH - 1),
+    ];
+
+    for (x, z) in TREE_COLUMNS {
+        let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
+        let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+        // Trees stand on top of the grass
+        let world_y = terrain_height(config, world_x, world_z) as i32 + 1;
+        world.place_structure(&structures.tree, WorldCoord::new(world_x, world_y, world_z));
     }
 }
 
@@ -819,6 +896,7 @@ fn on_chunk_data_changed(
     mut world: ResMut<VoxelWorld>,
     mut commands: Commands,
     config: Res<TerrainConfig>,
+    structures: Res<Structures>,
 ) {
     // May be None if the chunk was despawned before the event was processed
     let Ok(chunk) = chunks.get(event.entity) else {
@@ -838,14 +916,20 @@ fn on_chunk_data_changed(
         data.generation_phase
     };
 
-    match phase {
+    let advance = match phase {
         ChunkGenerationPhase::HeightGeneration => {
             info!("Generating height data for chunk {}", coord);
             generate_chunk_height(&mut world[&chunk], &config);
-            world.notify_neighbors(&mut commands, coord);
-
-            let data = &mut world[&chunk];
-            data.generation_phase = data.generation_phase.next();
+            true
+        }
+        ChunkGenerationPhase::GenerateStructures => {
+            if world.neighbors_ready_for_structures(coord) {
+                info!("Generating structures for chunk {}", coord);
+                generate_structures(&mut world, coord, &config, &structures);
+                true
+            } else {
+                false
+            }
         }
         // A chunk that is already done may need to be meshed again, e.g. after being reloaded
         ChunkGenerationPhase::MeshGeneration | ChunkGenerationPhase::Done => {
@@ -854,8 +938,18 @@ fn on_chunk_data_changed(
                 commands.entity(event.entity).insert(NeedsRemesh);
                 // Don't advance to the next phase yet, this will happen after the mesh is built
             }
+            false
         }
     };
+
+    if advance {
+        let data = &mut world[&chunk];
+        data.generation_phase = data.generation_phase.next();
+
+        // Neighbors may have been waiting on this phase, and this chunk may be ready for the next one
+        world.notify_neighbors(&mut commands, coord);
+        commands.trigger(ChunkDataChanged { entity: event.entity });
+    }
 }
 
 fn remesh_chunks(

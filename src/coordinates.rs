@@ -111,6 +111,22 @@ impl WorldCoord {
             z: self.z + dz,
         }
     }
+
+    pub fn min(self, other: Self) -> Self {
+        Self {
+            x: self.x.min(other.x),
+            y: self.y.min(other.y),
+            z: self.z.min(other.z),
+        }
+    }
+
+    pub fn max(self, other: Self) -> Self {
+        Self {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+            z: self.z.max(other.z),
+        }
+    }
 }
 
 impl From<[i32; 3]> for WorldCoord {
@@ -122,6 +138,18 @@ impl From<[i32; 3]> for WorldCoord {
 impl From<WorldCoord> for [i32; 3] {
     fn from(coord: WorldCoord) -> Self {
         [coord.x, coord.y, coord.z]
+    }
+}
+
+impl std::ops::Add for WorldCoord {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+            z: self.z + rhs.z,
+        }
     }
 }
 

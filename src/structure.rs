@@ -5,6 +5,9 @@ use crate::{VoxelType, aabb::Aabb, coordinates::WorldCoord, direction::Direction
 /// For trees, for example, we don't want to clear the space below it.
 /// But we do want to clear the space inside a house.
 /// A prefab placed relative to an origin voxel.
+/// Structures must always be placed with their origin voxel at coordinate (0, 0, 0).
+/// This means that the bounding box of the structure must contain the origin.
+/// Voxel placement in the world is determined by the structure's origin.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Structure {
     /// Offset-from-origin voxels. Positions not listed are left untouched.
@@ -18,15 +21,8 @@ impl Structure {
         let mut max = WorldCoord::ZERO;
 
         for voxel in &self.voxels {
-            let WorldCoord { x, y, z } = voxel.pos;
-
-            min.x = min.x.min(x);
-            min.y = min.y.min(y);
-            min.z = min.z.min(z);
-
-            max.x = max.x.max(x);
-            max.y = max.y.max(y);
-            max.z = max.z.max(z);
+            min = min.min(voxel.pos);
+            max = max.max(voxel.pos);
         }
 
         Aabb { min, max }
