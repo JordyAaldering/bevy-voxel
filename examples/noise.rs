@@ -1,4 +1,4 @@
-#[path = "../src/opensimplex2s.rs"]
+#[path = "../src/noise/opensimplex2s.rs"]
 mod opensimplex2s;
 
 use image::{GrayImage, Luma};
@@ -21,8 +21,6 @@ fn main() {
             image.put_pixel(x, y, Luma([value]));
         }
     }
-
-
 
     image.save("noise.png").unwrap();
 }
