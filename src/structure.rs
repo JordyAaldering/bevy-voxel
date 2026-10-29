@@ -37,4 +37,7 @@ pub struct StructureVoxel {
     /// Orientation, for voxels that have one (e.g. logs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direction: Option<Direction>,
+    /// Probability of this voxel being placed, between 0.0 and 1.0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probability: Option<f32>,
 }
