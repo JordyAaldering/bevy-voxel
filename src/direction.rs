@@ -1,6 +1,7 @@
 use bevy::math::{CompassQuadrant, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum Direction {
     /// Increasing x
     Right,

@@ -56,7 +56,7 @@ Ultimately, they all follow a similar approach, so if we understand Simplex/Perl
 3. The vertex is hashed to determine the gradient.
 4. The contribution of each vertex of the simplex is combined. The input coordinate is subtracted to unskew the vector. The dot product then gives the gradient value. d^2 gives the squared distance to the point.
 
-### Testing the noise
+## Testing the noise
 
 To test whether the noise function is correct, I've created a test file `examples/noise.rs`.
 We also need the `image` crate: `cargo add --dev image`.
@@ -72,7 +72,7 @@ In C#, the default overflow behaviour is to silently wrap the value.
 In the case of Rust, overflows will always cause a panic.
 Thus, we replace potentially overflowing and underflowing integer operations with `wrapping_add` etc.
 
-### Benchmarking the noise
+## Benchmarking the noise
 
 Another thing we can do is to benchmark the performance of the noise function.
 With the `criterion` crate we can conveniently test whether changes to the noise function have a negative impact on performance.
@@ -94,3 +94,5 @@ The topmost voxel, at z, becomes grass, the three below it become dirt, and all 
 We also need to make sure to spawn the player at the correct height, so they don't appear in the ground.
 In the future we might also need to check, for example, if the player does not appear inside a structure like a tree or a building, or does not spawn right above a ravine or cave.
 For now, we can just use the heightmap data.
+
+## `NoiseSettings` and `TerrainConfig`
