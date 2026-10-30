@@ -35,3 +35,24 @@ If you find the guide useful, please star the repository, so I know to keep work
 Before starting, I recommend reading the [Bevy introduction](https://bevy.org/news/introducing-bevy).
 It's a little outdated, but it explains the core ideas well.
 In particular, the _Entity Component System_ (ECS) is an important concept, as it lies at the core of everything Bevy does.
+
+## Chapters
+
+1.  [Setting the scene](Setting-the-scene)
+2.  [Inspecting settings](Inspecting-settings)
+3.  [The first mesh](The-first-mesh)
+4.  [Creating a chunk](Creating-a-chunk)
+5.  [Multiple chunks](Multiple-chunks)
+6.  [Multiple voxel types](Multiple-voxel-types)
+7.  [Creating a player character](Creating-a-player-character)
+8.  [Breaking and placing blocks](Breaking-and-placing-blocks)
+9.  [Terrain Generation](Terrain-Generation)
+10. [Generating the world](Generating-the-world)
+11. [Performance debugging](Performance-debugging)
+12. [Editor and refactoring](Editor-and-refactoring)
+13. [Phase'd chunk generation](Phase%27d-chunk-generation)
+14. [Serialization](Serialization)
+15. [Scaling voxel types](Scaling-voxel-types)
+16. [Trees, finally!](Trees%2C-finally%21)
+17. [Pump up the noise](Pump-up-the-noise)
+18. [Shader programming](Shader-programming)
