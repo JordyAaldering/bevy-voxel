@@ -51,7 +51,6 @@ const CHUNK_HEIGHT: usize = 64;
 // neighbours, so the outermost two rings of loaded chunks are not meshed.
 const CHUNK_LOAD_RADIUS: i32 = 3;
 
-const VOXELS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/voxels");
 const STRUCTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
 
 const CHUNK_NEIGHBORS: [(i32, i32); 8] = [

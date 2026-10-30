@@ -91,6 +91,7 @@ impl NoiseSettings {
     }
 }
 
+/*
 /// A seeded noise map covering a `width` x `height` grid, computed in one batch.
 #[derive(Clone, Copy, Debug)]
 pub struct NoiseMap2d {
@@ -116,3 +117,4 @@ impl NoiseMap2d {
         values
     }
 }
+*/
