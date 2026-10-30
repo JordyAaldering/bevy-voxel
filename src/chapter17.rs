@@ -690,6 +690,9 @@ fn spawn_player(
             commands.spawn((
                 PlayerCamera,
                 Camera3d::default(),
+                // MSAA can cause sampling of neighboring tiles in the voxel atlas,
+                // which shows up as thin white lines on the edges of voxels.
+                Msaa::Off,
                 editor_state.game_camera_target(),
                 Transform {
                     translation: Vec3::new(0.0, PLAYER_EYE_HEIGHT, 0.0),

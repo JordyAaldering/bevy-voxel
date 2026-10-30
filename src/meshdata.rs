@@ -132,8 +132,10 @@ fn quad_normals(direction: Direction) -> [Vec3; 4] {
 fn quad_uvs(atlas: &TextureAtlasLayout, index: usize) -> [Vec2; 4] {
     let rect = atlas.textures[index];
     let size = atlas.size.as_vec2();
-    let min = rect.min.as_vec2() / size;
-    let max = rect.max.as_vec2() / size;
+    // Inset a little bit so that we don't sample neighboring tiles, causing thin white lines
+    let inset = Vec2::splat(0.01);
+    let min = (rect.min.as_vec2() + inset) / size;
+    let max = (rect.max.as_vec2() - inset) / size;
     [
         vec2(min.x, max.y), // Bottom left
         vec2(max.x, max.y), // Bottom right
