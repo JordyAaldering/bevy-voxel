@@ -176,7 +176,29 @@ enum VoxelType {
 }
 
 impl VoxelType {
-    const ALL: [Self; 6] = [Self::Air, Self::Grass, Self::Dirt, Self::Stone, Self::Log, Self::Leaves];
+    const ALL: [Self; 21] = [
+        Self::Air,
+        Self::Grass,
+        Self::Dirt,
+        Self::Stone,
+        Self::StoneCoal,
+        Self::StoneIron,
+        Self::StoneGold,
+        Self::StoneDiamond,
+        Self::Log,
+        Self::Leaves,
+        Self::BrickGrey,
+        Self::BrickRed,
+        Self::Cactus,
+        Self::CottonBlue,
+        Self::CottonGreen,
+        Self::CottonRed,
+        Self::CottonWhite,
+        Self::Sand,
+        Self::Snow,
+        Self::Glass,
+        Self::Ice,
+    ];
 
     fn is_transparent(self) -> bool {
         matches!(self, VoxelType::Air)
