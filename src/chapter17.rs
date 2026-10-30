@@ -9,6 +9,7 @@ mod noise;
 mod ore;
 mod physics;
 mod raycast;
+mod screenshot;
 mod structure;
 mod telemetry;
 mod voxel_atlas;
@@ -21,6 +22,7 @@ use crate::{
     meshdata::MeshData,
     physics::PhysicsPlugin,
     raycast::VoxelHit,
+    screenshot::ScreenshotPlugin,
     structure::Structure,
     telemetry::{Telemetry, TelemetryPublisher},
     voxel_atlas::{VoxelAtlas, build_voxel_atlas},
@@ -51,7 +53,7 @@ const CHUNK_HEIGHT: usize = 64;
 
 // Meshing a chunk needs structures generated in all 8 neighbours, which in turn need terrain in their
 // neighbours, so the outermost two rings of loaded chunks are not meshed.
-const CHUNK_LOAD_RADIUS: i32 = 4;
+const CHUNK_LOAD_RADIUS: i32 = 5;
 
 const STRUCTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
 
@@ -605,6 +607,7 @@ fn main() -> AppExit {
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
             SystemInformationDiagnosticsPlugin::default(),
+            ScreenshotPlugin::default(),
             PhysicsPlugin,
             EditorPlugin,
         ))

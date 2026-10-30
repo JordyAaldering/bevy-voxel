@@ -14,7 +14,7 @@ use bevy::{
     prelude::*,
     camera_controller::pan_orbit_camera::{DefaultPanOrbitCameraPlugins, SyncCameraPosition},
     image::Image,
-    render::render_resource::{Extent3d, TextureFormat},
+    render::{render_resource::{Extent3d, TextureFormat}},
     window::PrimaryWindow,
 };
 use bevy_inspector_egui::{

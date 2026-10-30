@@ -1,5 +1,7 @@
 # Pump up the noise
 
+![](img/chapter17.png)
+
 Each chunk should get its own random seed/state (for local randomness, like structures, terrain should remain consistent across chunks.), based on the original seed combined with the chunk's position.
 This ensures that randomness is not dependent on the order in which chunks are generated.
 We also need a per-chunk random state, because a global state would sequentialize generation.
