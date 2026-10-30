@@ -1,14 +1,20 @@
 mod axis;
+mod chunk_neighbors;
 mod coordinates;
 mod direction;
 mod meshdata;
-mod opensimplex2s;
+mod noise;
+mod raycast;
+mod screenshot;
 
 use crate::{
     axis::Axis,
+    chunk_neighbors::ChunkNeighbors,
     coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
     direction::Direction,
     meshdata::MeshData,
+    raycast::VoxelHit,
+    screenshot::ScreenshotPlugin,
 };
 
 use std::ops::{Index, IndexMut};
@@ -77,7 +83,7 @@ struct CameraSettings {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,
@@ -113,12 +119,6 @@ impl VoxelType {
     }
 }
 
-#[derive(Debug)]
-struct VoxelHit {
-    coord: WorldCoord,
-    direction: Direction,
-}
-
 /// ECS component of a chunk.
 #[derive(Component)]
 struct Chunk {
@@ -134,7 +134,7 @@ struct NeedsRemesh;
 #[derive(Component)]
 struct NeedsDespawn;
 
-struct ChunkData {
+pub struct ChunkData {
     coord: ChunkCoord,
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
     entity: Option<Entity>,
@@ -365,6 +365,7 @@ fn main() -> AppExit {
                 .set(ImagePlugin::default_nearest()),
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            ScreenshotPlugin::default(),
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
@@ -377,18 +378,19 @@ fn main() -> AppExit {
         ))
         .add_systems(Update, (
             toggle_cursor,
-            (toggle_gamemode, player_look, break_place_block)
-                .run_if(is_focused),
-            move_survival
-                .run_if(is_focused.and_then(is_gamemode_survival)),
-            move_spectator
-                .run_if(is_focused.and_then(is_gamemode_spectator)),
+            (
+                toggle_gamemode,
+                player_look,
+                break_place_block,
+                move_survival.run_if(is_gamemode_survival),
+                move_spectator.run_if(is_gamemode_spectator),
+            )
+            .run_if(is_focused),
             draw_selected_voxel,
             spawn_chunks_around_player,
             retire_distant_chunks,
         ))
         .add_systems(PostUpdate, (
-            // TODO: check if we need a constraint between these
             despawn_retired_chunks,
             remesh_chunks,
         ))
@@ -414,12 +416,12 @@ fn spawn_global_illumination(mut commands: Commands) {
 }
 
 fn spawn_player(mut commands: Commands) {
-    let world_height = opensimplex2s::noise2d(0, 0.0, 0.0) * 10.0 + 20.0;
+    let world_height = noise::opensimplex2s::noise2(0, 0.0, 0.0) * 10.0 + 20.0;
 
     commands.spawn((
             Name::new("Player"),
             Player::default(),
-            Transform::from_xyz(1.5, world_height as f32 + 1.0, 1.5),
+            Transform::from_xyz(0.5, world_height as f32 + 1.0, 0.5),
         ))
         .with_children(|commands| {
             commands.spawn((
@@ -478,13 +480,13 @@ fn spawn_chunks_around_player(
 }
 
 fn generate_chunk(chunk: &mut ChunkData) {
-    for x in 0..CHUNK_WIDTH {
-        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
+    for z in 0..CHUNK_WIDTH {
+        let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-        for z in 0..CHUNK_WIDTH {
-            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
+        for x in 0..CHUNK_WIDTH {
+            let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
 
-            let height = (opensimplex2s::noise2d(0, world_x as f64 / 100.0, world_z as f64 / 100.0) * 10.0) as i32 + 20;
+            let height = (noise::opensimplex2s::noise2(0, world_x as f64 / 100.0, world_z as f64 / 100.0) * 10.0) as i32 + 20;
             let height = (height as usize).clamp(0, CHUNK_HEIGHT - 1);
 
             // Top layer is grass
@@ -785,10 +787,11 @@ fn draw_selected_voxel(
     world: Res<VoxelWorld>,
     camera: Single<&GlobalTransform, With<PlayerCamera>>,
 ) {
-    let Some(hit) = find_voxel(
+    let Some(hit) = raycast::find_voxel(
         &world,
         camera.translation(),
-        *camera.forward(),
+        camera.forward(),
+        INTERACTION_DISTANCE,
     ) else {
         return;
     };
@@ -815,9 +818,9 @@ fn break_place_block(
     }
 
     let origin = camera.translation();
-    let direction = camera.forward();
+    let look = camera.forward();
 
-    if let Some(VoxelHit { coord, direction }) = find_voxel(&world, origin, *direction) {
+    if let Some(VoxelHit { coord, direction }) = raycast::find_voxel(&world, origin, look, INTERACTION_DISTANCE) {
         info!("Hit {:?} at {:?}", coord, direction);
         if do_break {
             world.set_voxel(&mut commands, coord, VoxelType::Air);
@@ -825,106 +828,5 @@ fn break_place_block(
             let neighbor = coord.shift(direction);
             world.set_voxel(&mut commands, neighbor, VoxelType::Dirt);
         }
-    }
-}
-
-fn find_voxel(world: &VoxelWorld, origin: Vec3, direction: Vec3) -> Option<VoxelHit> {
-    let direction = direction.normalize();
-
-    let mut x = origin.x.floor() as i32;
-    let mut y = origin.y.floor() as i32;
-    let mut z = origin.z.floor() as i32;
-
-    let step_x = direction.x.signum() as i32;
-    let step_y = direction.y.signum() as i32;
-    let step_z = direction.z.signum() as i32;
-
-    let delta_x = if direction.x != 0.0 {
-        (1.0 / direction.x).abs()
-    } else {
-        f32::INFINITY
-    };
-
-    let delta_y = if direction.y != 0.0 {
-        (1.0 / direction.y).abs()
-    } else {
-        f32::INFINITY
-    };
-
-    let delta_z = if direction.z != 0.0 {
-        (1.0 / direction.z).abs()
-    } else {
-        f32::INFINITY
-    };
-
-    let mut max_x = initial_axis_distance(origin.x, direction.x);
-    let mut max_y = initial_axis_distance(origin.y, direction.y);
-    let mut max_z = initial_axis_distance(origin.z, direction.z);
-
-    loop {
-        let (distance, face) = if max_x <= max_y && max_x <= max_z {
-            x += step_x;
-
-            let distance = max_x;
-            max_x += delta_x;
-
-            let direction = if step_x > 0 {
-                Direction::Left
-            } else {
-                Direction::Right
-            };
-
-            (distance, direction)
-        } else if max_y <= max_z {
-            y += step_y;
-
-            let distance = max_y;
-            max_y += delta_y;
-
-            let direction = if step_y > 0 {
-                Direction::Bottom
-            } else {
-                Direction::Top
-            };
-
-            (distance, direction)
-        } else {
-            z += step_z;
-
-            let distance = max_z;
-            max_z += delta_z;
-
-            let direction = if step_z > 0 {
-                Direction::Back
-            } else {
-                Direction::Front
-            };
-
-            (distance, direction)
-        };
-
-        if distance > INTERACTION_DISTANCE {
-            return None;
-        }
-
-        let coord = WorldCoord::new(x, y, z);
-        if world.is_solid(coord) {
-            return Some(VoxelHit {
-                coord,
-                direction: face,
-            });
-        }
-    }
-}
-
-/// Returns the distance until the ray crosses the next voxel boundary on this axis.
-/// This is needed to determine which neighboring voxel to visit next.
-fn initial_axis_distance(origin: f32, direction: f32) -> f32 {
-    if direction > 0.0 {
-        (origin.ceil() - origin) / direction
-    } else if direction < 0.0 {
-        (origin.floor() - origin) / direction
-    } else {
-        f32::INFINITY
     }
 }
