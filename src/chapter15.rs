@@ -716,13 +716,25 @@ fn build_mesh(chunk: &ChunkData, chunk_pos: ChunkCoord, world: &VoxelWorld, atla
         for direction in Direction::iter() {
             if is_face_visible(world, chunk, chunk_pos, voxel_pos, direction) {
                 let origin = voxel_pos.local_position();
-                let texture = atlas.texture(voxel, direction);
+                let texture = atlas.texture(voxel, direction, variant_seed(chunk_pos, voxel_pos));
                 mesh_data.add_quad(direction, origin, texture);
             }
         }
     }
 
     mesh_data.build()
+}
+
+/// Deterministic per-position hash, so a voxel keeps its variant when remeshed or reloaded.
+fn variant_seed(chunk_pos: ChunkCoord, voxel_pos: VoxelCoord) -> u32 {
+    let x = chunk_pos.x.wrapping_mul(CHUNK_WIDTH as i32).wrapping_add(voxel_pos.x as i32);
+    let z = chunk_pos.z.wrapping_mul(CHUNK_WIDTH as i32).wrapping_add(voxel_pos.z as i32);
+    let mut h = (x as u32).wrapping_mul(0x9E37_79B1)
+        ^ (voxel_pos.y as u32).wrapping_mul(0x85EB_CA77)
+        ^ (z as u32).wrapping_mul(0xC2B2_AE3D);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x2C1B_3C6D);
+    h ^ (h >> 13)
 }
 
 fn is_face_visible(world: &VoxelWorld, chunk: &ChunkData, chunk_pos: ChunkCoord, voxel_pos: VoxelCoord, direction: Direction) -> bool {

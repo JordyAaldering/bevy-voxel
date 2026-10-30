@@ -11,16 +11,28 @@
     "all": "stone"
   },
   "stonecoal": {
-    "all": "stone_coal"
+    "variants": [
+      { "all": "stone_coal" },
+      { "all": "stone_coal_alt" }
+    ]
   },
   "stoneiron": {
-    "all": "stone_iron"
+    "variants": [
+      { "all": "stone_iron" },
+      { "all": "stone_iron_alt" }
+    ]
   },
   "stonegold": {
-    "all": "stone_gold"
+    "variants": [
+      { "all": "stone_gold" },
+      { "all": "stone_gold_alt" }
+    ]
   },
   "stonediamond": {
-    "all": "stone_diamond"
+    "variants": [
+      { "all": "stone_diamond" },
+      { "all": "stone_diamond_alt" }
+    ]
   },
   "log": {
     "top": "trunk_top",

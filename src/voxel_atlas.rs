@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, fs, io, ops::{Index, IndexMut}, path::{Path, PathBuf}, time::Duration};
+use std::{collections::BTreeSet, fs, path::Path};
 
 use better_default::Default;
 use bevy::{
@@ -43,16 +43,36 @@ impl FaceSpec {
     }
 }
 
+/// A voxel is either described by a single set of faces, or by a list of
+/// alternative looks of which one is picked per voxel position.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum VoxelSpec {
+    Faces(FaceSpec),
+    Variants { variants: Vec<FaceSpec> },
+}
+
+impl VoxelSpec {
+    fn variants(&self) -> &[FaceSpec] {
+        match self {
+            Self::Faces(spec) => std::slice::from_ref(spec),
+            Self::Variants { variants } => variants,
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct VoxelAtlas {
     layout: TextureAtlasLayout,
-    /// Atlas index per voxel type and direction. Air is never rendered and stays 0.
-    faces: [[usize; 6]; VoxelType::ALL.len()],
+    /// Atlas index per voxel type, variant, and direction. Air is never rendered and has no variants.
+    faces: Vec<Vec<[usize; 6]>>,
 }
 
 impl VoxelAtlas {
-    pub fn texture(&self, voxel: VoxelType, direction: Direction) -> usize {
-        self.faces[voxel as usize][direction as usize]
+    /// `variant_seed` picks one of the voxel's variants; the same seed always gives the same variant.
+    pub fn texture(&self, voxel: VoxelType, direction: Direction, variant_seed: u32) -> usize {
+        let variants = &self.faces[voxel as usize];
+        variants[variant_seed as usize % variants.len()][direction as usize]
     }
 
     pub fn layout(&self) -> &TextureAtlasLayout {
@@ -64,7 +84,7 @@ impl VoxelAtlas {
 pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Image), String> {
     let json_path = Path::new(VOXELS_DIR).join("voxels.json");
     let json = fs::read_to_string(&json_path).map_err(|e| format!("{}: {e}", json_path.display()))?;
-    let specs: HashMap<VoxelType, FaceSpec> = serde_json::from_str(&json)
+    let specs: HashMap<VoxelType, VoxelSpec> = serde_json::from_str(&json)
         .map_err(|e| format!("{}: {e}", json_path.display()))?;
 
     // Resolve every face to an image name, remembering the unique names
@@ -72,11 +92,17 @@ pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Imag
     let mut resolved = Vec::new();
     for voxel in VoxelType::ALL.into_iter().filter(|v| v.is_solid()) {
         let spec = specs.get(&voxel).ok_or_else(|| format!("no entry for {voxel:?} in voxels.json"))?;
-        for direction in Direction::iter() {
-            let name = spec.resolve(direction)
-                .ok_or_else(|| format!("{voxel:?} has no image for its {direction:?} face"))?;
-            names.insert(name.to_owned());
-            resolved.push((voxel, direction, name.to_owned()));
+        if spec.variants().is_empty() {
+            return Err(format!("{voxel:?} has an empty list of variants in voxels.json"));
+        }
+
+        for (variant, face_spec) in spec.variants().iter().enumerate() {
+            for direction in Direction::iter() {
+                let name = face_spec.resolve(direction)
+                    .ok_or_else(|| format!("{voxel:?} variant {variant} has no image for its {direction:?} face"))?;
+                names.insert(name.to_owned());
+                resolved.push((voxel, variant, direction, name.to_owned()));
+            }
         }
     }
 
@@ -99,15 +125,21 @@ pub fn build_voxel_atlas(images: &mut Assets<Image>) -> Result<(VoxelAtlas, Imag
     for (_, handle) in &loaded {
         builder.add_texture(Some(handle.id()), images.get(handle).unwrap());
     }
+
     let (layout, sources, image) = builder.build().map_err(|e| format!("failed to pack atlas: {e}"))?;
 
     let indices: HashMap<&str, usize> = loaded.iter()
         .map(|(name, handle)| (name.as_str(), sources.texture_index(handle.id()).unwrap()))
         .collect();
 
-    let mut faces = [[0; 6]; VoxelType::ALL.len()];
-    for (voxel, direction, name) in resolved {
-        faces[voxel as usize][direction as usize] = indices[name.as_str()];
+    let mut faces = vec![Vec::new(); VoxelType::ALL.len()];
+    for (voxel, variant, direction, name) in resolved {
+        let variants: &mut Vec<[usize; 6]> = &mut faces[voxel as usize];
+        if variants.len() <= variant {
+            variants.resize(variant + 1, [0; 6]);
+        }
+
+        variants[variant][direction as usize] = indices[name.as_str()];
     }
 
     Ok((VoxelAtlas { layout, faces }, image))
