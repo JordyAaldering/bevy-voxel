@@ -7,6 +7,7 @@ Make sure your Cargo configuration is set up correctly; you don't want to spend 
 Bevy uses _schedules_ to determine when systems run.
 The most common schedules are `Startup`, `Update`, and `FixedUpdate`.
 
+
 - `Startup` runs once when the app starts,
 - `Update` runs every frame, and
 - `FixedUpdate` runs at a fixed time interval, which is useful for things like physics.

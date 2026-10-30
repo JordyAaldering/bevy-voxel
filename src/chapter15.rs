@@ -156,8 +156,23 @@ enum VoxelType {
     Grass,
     Dirt,
     Stone,
+    StoneCoal,
+    StoneIron,
+    StoneGold,
+    StoneDiamond,
     Log,
     Leaves,
+    BrickGrey,
+    BrickRed,
+    Cactus,
+    CottonBlue,
+    CottonGreen,
+    CottonRed,
+    CottonWhite,
+    Sand,
+    Snow,
+    Glass,
+    Ice,
 }
 
 impl VoxelType {
