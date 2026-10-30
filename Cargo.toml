@@ -7,6 +7,10 @@ edition = "2024"
 name = "main"
 path = "src/chapter17.rs"
 
+[[bin]]
+name = "noise_viewer"
+path = "src/noise_viewer.rs"
+
 [profile.dev]
 opt-level = 1
 
