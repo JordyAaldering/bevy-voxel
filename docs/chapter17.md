@@ -20,6 +20,33 @@ Caves can be generated almost separately, though it has to be before we place st
 Similarly for rivers.
 For caves we can use the 3D simplex noise algorithm.
 
+### Steps performed
+
+1. **Add a generation phase.** `ChunkGenerationPhase` gets a `CaveGeneration` phase between `HeightGeneration` and `GenerateStructures`, and `next()` is updated to match.
+   Saved chunks store the phase by variant index, so chunks saved before this change are stale: delete `savedata/world/chunk_*.bin`.
+2. **Declare the neighbors each phase needs.** Phases do not all need the same chunks to be ready, so each phase now says which ones, using `ChunkGenerationPhase::neighbor_requirement()`.
+   It returns a `NeighborRequirement { radius, diagonal }`: how many chunks away to look (0 is only the chunk itself), and whether chunks outside the same row or column count.
+   - `HeightGeneration` and `CaveGeneration` need nothing, because noise is a pure function of the world position, so the chunk only reads and writes itself.
+   - `GenerateStructures` needs radius 1 including diagonals, because a tree near a corner can overflow into the diagonal chunk.
+   - `MeshGeneration` needs radius 1 without diagonals, because only the touching chunks matter for hiding faces.
+3. **Check readiness in one place.** The separate `neighbors_ready_for_structures` and `neighbors_ready_for_mesh` are replaced by `VoxelWorld::neighbors_ready_for(coord, phase)`, which checks every offset of the phase's requirement.
+4. **Make 3D noise available.** `NoiseSettings::sample3` is the fractal version of the 3D OpenSimplex2S noise, with the same octaves, frequency, and so on as `sample2`.
+5. **Add `Caves` to `WorldConfig`.**
+   It holds the `noise` settings and a `threshold`.
+   It is `#[serde(default)]`, so existing `world.json` files keep loading and get the default caves.
+6. **Carve.** `generate_caves` visits every column of the chunk and sets a voxel to air when the 3D noise at its world position is above `threshold`.
+   Because the noise only depends on the world position, caves continue across chunk borders without needing to look at the neighbors.
+   Only the lowest layer is never carved, so caves do not open up the bottom of the world.
+   Caves can break through the surface, which gives cave entrances.
+   The noise has its own seed offset, so it does not correlate with the terrain.
+7. **Test it.** One test checks that caves are a small part of the underground (the default is about 3%), and another that an old config without `caves` still loads.
+
+### Tuning
+
+- `threshold` decides how much is carved out: lower is more cave. Since the noise roughly spans `[-1, 1]`, `0.5` carves a few percent.
+- `noise.frequency` decides the size of the caves, and `octaves` makes their walls rougher.
+- Thresholding blobs gives round caverns. Tunnels need a different shape of noise, for example carving where the absolute value of the noise is close to zero.
+
 ## Biomes
 
 Biomes change how the terrain looks: the height, the blocks on top, and how many trees grow.

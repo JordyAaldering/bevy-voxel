@@ -779,6 +779,26 @@ fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
     }
 }
 
+/// Carves caves out of the terrain, which has to be done before structures are placed on top of it.
+/// Only this chunk is read and written, the noise is a pure function of the world position.
+fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig) {
+    for x in 0..CHUNK_WIDTH {
+        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
+
+        for z in 0..CHUNK_WIDTH {
+            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+            let height = config.column(world_x, world_z).height;
+            // Caves may open up at the surface, only the bottom layer is kept
+            for y in 1..=height {
+                if config.is_cave(world_x, y as i32, world_z) {
+                    chunk[VoxelCoord::new(x, y, z)] = VoxelType::Air;
+                }
+            }
+        }
+    }
+}
+
 fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &WorldConfig, structures: &Structures) {
     for x in 0..CHUNK_WIDTH {
         let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
@@ -788,6 +808,11 @@ fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &World
 
             let column = config.column(world_x, world_z);
             if config.has_tree(&column, world_x, world_z) {
+                // A cave may have been carved out of the surface, in which case the tree would float
+                if world.chunks[&coord][VoxelCoord::new(x, column.height, z)] == VoxelType::Air {
+                    continue;
+                }
+
                 // Trees stand on top of the surface
                 let world_y = column.height as i32 + 1;
                 world.place_structure(&structures.tree, WorldCoord::new(world_x, world_y, world_z));
@@ -885,7 +910,8 @@ fn on_chunk_data_changed(
         }
         ChunkGenerationPhase::CaveGeneration => {
             if world.neighbors_ready_for(coord, phase) {
-                // Cave carving is not implemented yet
+                info!("Carving caves for chunk {}", coord);
+                generate_caves(&mut world[&chunk], &config);
                 true
             } else {
                 false

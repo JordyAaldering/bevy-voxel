@@ -9,6 +9,7 @@ const SURFACE_SALT: u64 = 0x5352_4641_4345;
 const TREE_SALT: u64 = 0x5452_4545;
 const TEMPERATURE_SEED_OFFSET: i64 = 0x7E57;
 const HUMIDITY_SEED_OFFSET: i64 = 0x4801;
+const CAVE_SEED_OFFSET: i64 = 0xCA7E;
 
 /// Terrain generation settings of a region of the world.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,11 +40,21 @@ pub struct Climate {
     pub blend: f32,
 }
 
+/// Caves are carved out of the terrain wherever 3D noise exceeds a threshold.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Caves {
+    /// Sampled in 3D; should roughly span `[-1, 1]`.
+    pub noise: NoiseSettings,
+    /// Noise value above which a voxel becomes air. Lower values give more and bigger caves.
+    pub threshold: f32,
+}
+
 /// Settings of a single world, stored in `world.json` next to its chunks.
 #[derive(Clone, Debug, Resource, Serialize, Deserialize)]
 pub struct WorldConfig {
     pub seed: i64,
     pub climate: Climate,
+    pub caves: Caves,
     pub biomes: Vec<Biome>,
 }
 
@@ -131,6 +142,12 @@ impl WorldConfig {
         }
     }
 
+    /// Whether a cave is carved out at this position.
+    pub fn is_cave(&self, x: i32, y: i32, z: i32) -> bool {
+        let seed = self.seed.wrapping_add(CAVE_SEED_OFFSET);
+        self.caves.noise.sample3(seed, x as f32, y as f32, z as f32) > self.caves.threshold
+    }
+
     /// Whether a tree grows in this column, given the column's biome.
     pub fn has_tree(&self, column: &Column, x: i32, z: i32) -> bool {
         hash01(self.seed, x, z, TREE_SALT) < column.tree_density
@@ -151,6 +168,14 @@ impl Default for WorldConfig {
                 temperature: climate_noise,
                 humidity: climate_noise,
                 blend: 0.1,
+            },
+            caves: Caves {
+                noise: NoiseSettings {
+                    octaves: 2,
+                    frequency: 0.04,
+                    ..default()
+                },
+                threshold: 0.5,
             },
             biomes: vec![
                 Biome {

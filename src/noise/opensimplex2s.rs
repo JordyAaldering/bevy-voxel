@@ -2,66 +2,46 @@
 //! K.jpg's OpenSimplex 2, smooth variant ("SuperSimplex")
 //!
 
-use std::{num::Wrapping, sync::{LazyLock, Once}};
+use std::{num::Wrapping, sync::LazyLock};
 
 const PRIME_X: i64 = 0x5205402B9270C86F;
 const PRIME_Y: i64 = 0x598CD327003817B5;
 const PRIME_Z: i64 = 0x5BCC226E9FA0BACB;
-const PRIME_W: i64 = 0x56CC5227E58F554B;
 const HASH_MULTIPLIER: i64 = 0x53A3F72DEEC546F5;
 const SEED_FLIP_3D: i64 = -0x52D547B2E96ED629;
 
-const ROOT2OVER2: f64 = 0.7071067811865476;
 const SKEW_2D: f64 = 0.366025403784439;
 const UNSKEW_2D: f64 = -0.21132486540518713;
-
 const ROOT3OVER3: f64 = 0.577350269189626;
-const FALLBACK_ROTATE3: f64 = 2.0 / 3.0;
-const ROTATE3_ORTHOGONALIZER: f64 = UNSKEW_2D;
-
-const SKEW_4D: f32 = 0.309016994374947;
-const UNSKEW_4D: f32 = -0.138196601125011;
 
 const N_GRADS_2D_EXPONENT: i32 = 7;
 const N_GRADS_3D_EXPONENT: i32 = 8;
-const N_GRADS_4D_EXPONENT: i32 = 9;
 const N_GRADS_2D: i32 = 1 << N_GRADS_2D_EXPONENT;
 const N_GRADS_3D: i32 = 1 << N_GRADS_3D_EXPONENT;
-const N_GRADS_4D: i32 = 1 << N_GRADS_4D_EXPONENT;
 
 const NORMALIZER_2D: f64 = 0.05481866495625118;
 const NORMALIZER_3D: f64 = 0.2781926117527186;
-const NORMALIZER_4D: f64 = 0.11127401889945551;
 
 const RSQUARED_2D: f32 = 2.0 / 3.0;
 const RSQUARED_3D: f32 = 3.0 / 4.0;
-const RSQUARED_4D: f32 = 4.0 / 5.0;
 
-/*
-    Noise Evaluators
-*/
-
-/**
-    2D OpenSimplex2S/SuperSimplex noise, standard lattice orientation.
-*/
+/// 2D OpenSimplex2S/SuperSimplex noise, standard lattice orientation.
+#[allow(unused)]
 pub fn noise2(seed: i64, x: f64, y: f64) -> f32 {
     // Get points for A2* lattice
     let s = SKEW_2D * (x + y);
     let xs = x + s;
     let ys = y + s;
-
-    noise2_UnskewedBase(seed, xs, ys)
+    noise2_unskewed_base(seed, xs, ys)
 }
 
-/**
-    2D  OpenSimplex2S/SuperSimplex noise base.
-*/
-fn noise2_UnskewedBase(seed: i64, xs: f64, ys: f64) -> f32 {
+/// 2D OpenSimplex2S/SuperSimplex noise base.
+fn noise2_unskewed_base(seed: i64, xs: f64, ys: f64) -> f32 {
     let seed = Wrapping(seed);
 
     // Get base points and offsets.
-    let xsb = fastFloor(xs);
-    let ysb = fastFloor(ys);
+    let xsb = fast_floor(xs);
+    let ysb = fast_floor(ys);
     let xi = (xs - xsb as f64) as f32;
     let yi = (ys - ysb as f64) as f32;
 
@@ -187,14 +167,13 @@ fn noise2_UnskewedBase(seed: i64, xs: f64, ys: f64) -> f32 {
     value
 }
 
-/**
-    3D OpenSimplex2S/SuperSimplex noise, with better visual isotropy in (X, Z).
-    Recommended for 3D terrain and time-varied animations.
-    The Y coordinate should always be the "different" coordinate in whatever your use case is.
-    If Y is vertical in world coordinates, call noise3_ImproveXZ(x, Y, z).
-    If Z is vertical in world coordinates, call noise3_ImproveXZ(x, Z, y) or use noise3_ImproveXY.
-    For a time varied animation, call noise3_ImproveXZ(x, T, y) or use noise3_ImproveXY.
-*/
+/// 3D OpenSimplex2S/SuperSimplex noise, with better visual isotropy in (X, Z).
+/// Recommended for 3D terrain and time-varied animations.
+/// The Y coordinate should always be the "different" coordinate in whatever your use case is.
+/// If Y is vertical in world coordinates, call noise3_ImproveXZ(x, Y, z).
+/// If Z is vertical in world coordinates, call noise3_ImproveXZ(x, Z, y) or use noise3_ImproveXY.
+/// For a time varied animation, call noise3_ImproveXZ(x, T, y) or use noise3_ImproveXY.
+#[allow(unused)]
 pub fn noise3(seed: i64, x: f64, y: f64, z: f64) -> f32 {
     // Re-orient the cubic lattices without skewing, so Y points up the main lattice diagonal,
     // and the planes formed by XZ are moved far out of alignment with the cube faces.
@@ -207,39 +186,20 @@ pub fn noise3(seed: i64, x: f64, y: f64, z: f64) -> f32 {
     let yr = xz * -ROOT3OVER3 + yy;
 
     // Evaluate both lattices to form a BCC lattice.
-    noise3_UnrotatedBase(seed, xr, yr, zr)
+    noise3_unrotated_base(seed, xr, yr, zr)
 }
 
-/**
-    3D OpenSimplex2S/SuperSimplex noise, fallback rotation option
-    Use noise3_ImproveXY or noise3_ImproveXZ instead, wherever appropriate.
-    They have less diagonal bias. This function's best use is as a fallback.
-*/
-pub fn noise3_Fallback(seed: i64, x: f64, y: f64, z: f64) -> f32 {
-    // Re-orient the cubic lattices via rotation, to produce a familiar look.
-    // Orthonormal rotation. Not a skew transform.
-    let r = FALLBACK_ROTATE3 * (x + y + z);
-    let xr = r - x;
-    let yr = r - y;
-    let zr = r - z;
-
-    // Evaluate both lattices to form a BCC lattice.
-    noise3_UnrotatedBase(seed, xr, yr, zr)
-}
-
-/**
-    Generate overlapping cubic lattices for 3D Re-oriented BCC noise.
-    Lookup table implementation inspired by DigitalShadow.
-    It was actually faster to narrow down the points in the loop itself,
-    than to build up the index with enough info to isolate 8 points.
-*/
-fn noise3_UnrotatedBase(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
+/// Generate overlapping cubic lattices for 3D Re-oriented BCC noise.
+/// Lookup table implementation inspired by DigitalShadow.
+/// It was actually faster to narrow down the points in the loop itself,
+/// than to build up the index with enough info to isolate 8 points.
+fn noise3_unrotated_base(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
     let seed = Wrapping(seed);
 
     // Get base points and offsets.
-    let xrb = fastFloor(xr);
-    let yrb = fastFloor(yr);
-    let zrb = fastFloor(zr);
+    let xrb = fast_floor(xr);
+    let yrb = fast_floor(yr);
+    let zrb = fast_floor(zr);
     let xi = (xr - xrb as f64) as f32;
     let yi = (yr - yrb as f64) as f32;
     let zi = (zr - zrb as f64) as f32;
@@ -251,22 +211,22 @@ fn noise3_UnrotatedBase(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
     let seed2 = seed ^ Wrapping(SEED_FLIP_3D);
 
     // -1 if positive, 0 if negative.
-    let xNMask = (-0.5 - xi) as i32;
-    let yNMask = (-0.5 - yi) as i32;
-    let zNMask = (-0.5 - zi) as i32;
+    let xnmask = (-0.5 - xi) as i32;
+    let ynmask = (-0.5 - yi) as i32;
+    let znmask = (-0.5 - zi) as i32;
 
     // First vertex.
-    let x0 = xi + xNMask as f32;
-    let y0 = yi + yNMask as f32;
-    let z0 = zi + zNMask as f32;
+    let x0 = xi + xnmask as f32;
+    let y0 = yi + ynmask as f32;
+    let z0 = zi + znmask as f32;
     let a0 = RSQUARED_3D - x0 * x0 - y0 * y0 - z0 * z0;
     let mut value = (a0 * a0)
         * (a0 * a0)
         * grad3(
             seed,
-            xrbp + (Wrapping(xNMask as i64) & Wrapping(PRIME_X)),
-            yrbp + (Wrapping(yNMask as i64) & Wrapping(PRIME_Y)),
-            zrbp + (Wrapping(zNMask as i64) & Wrapping(PRIME_Z)),
+            xrbp + (Wrapping(xnmask as i64) & Wrapping(PRIME_X)),
+            yrbp + (Wrapping(ynmask as i64) & Wrapping(PRIME_Y)),
+            zrbp + (Wrapping(znmask as i64) & Wrapping(PRIME_Z)),
             x0,
             y0,
             z0,
@@ -291,59 +251,59 @@ fn noise3_UnrotatedBase(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
 
     // Shortcuts for building the remaining falloffs.
     // Derived by subtracting the polynomials with the offsets plugged in.
-    let xAFlipMask0 = ((xNMask | 1) << 1) as f32 * x1;
-    let yAFlipMask0 = ((yNMask | 1) << 1) as f32 * y1;
-    let zAFlipMask0 = ((zNMask | 1) << 1) as f32 * z1;
-    let xAFlipMask1 = (-2 - (xNMask << 2)) as f32 * x1 - 1.0;
-    let yAFlipMask1 = (-2 - (yNMask << 2)) as f32 * y1 - 1.0;
-    let zAFlipMask1 = (-2 - (zNMask << 2)) as f32 * z1 - 1.0;
+    let xa_flip_mask0 = ((xnmask | 1) << 1) as f32 * x1;
+    let ya_flip_mask0 = ((ynmask | 1) << 1) as f32 * y1;
+    let za_flip_mask0 = ((znmask | 1) << 1) as f32 * z1;
+    let xa_flip_mask1 = (-2 - (xnmask << 2)) as f32 * x1 - 1.0;
+    let ya_flip_mask1 = (-2 - (ynmask << 2)) as f32 * y1 - 1.0;
+    let za_flip_mask1 = (-2 - (znmask << 2)) as f32 * z1 - 1.0;
 
     let mut skip5 = false;
-    let a2 = xAFlipMask0 + a0;
+    let a2 = xa_flip_mask0 + a0;
     if a2 > 0.0 {
-        let x2 = x0 - (xNMask | 1) as f32;
+        let x2 = x0 - (xnmask | 1) as f32;
         let y2 = y0;
         let z2 = z0;
         value += (a2 * a2)
             * (a2 * a2)
             * grad3(
                 seed,
-                xrbp + (Wrapping(!xNMask as i64) & Wrapping(PRIME_X)),
-                yrbp + (Wrapping(yNMask as i64) & Wrapping(PRIME_Y)),
-                zrbp + (Wrapping(zNMask as i64) & Wrapping(PRIME_Z)),
+                xrbp + (Wrapping(!xnmask as i64) & Wrapping(PRIME_X)),
+                yrbp + (Wrapping(ynmask as i64) & Wrapping(PRIME_Y)),
+                zrbp + (Wrapping(znmask as i64) & Wrapping(PRIME_Z)),
                 x2,
                 y2,
                 z2,
             );
     } else {
-        let a3 = yAFlipMask0 + zAFlipMask0 + a0;
+        let a3 = ya_flip_mask0 + za_flip_mask0 + a0;
         if a3 > 0.0 {
             let x3 = x0;
-            let y3 = y0 - (yNMask | 1) as f32;
-            let z3 = z0 - (zNMask | 1) as f32;
+            let y3 = y0 - (ynmask | 1) as f32;
+            let z3 = z0 - (znmask | 1) as f32;
             value += (a3 * a3)
                 * (a3 * a3)
                 * grad3(
                     seed,
-                    xrbp + (Wrapping(xNMask as i64) & Wrapping(PRIME_X)),
-                    yrbp + (Wrapping(!yNMask as i64) & Wrapping(PRIME_Y)),
-                    zrbp + (Wrapping(!zNMask as i64) & Wrapping(PRIME_Z)),
+                    xrbp + (Wrapping(xnmask as i64) & Wrapping(PRIME_X)),
+                    yrbp + (Wrapping(!ynmask as i64) & Wrapping(PRIME_Y)),
+                    zrbp + (Wrapping(!znmask as i64) & Wrapping(PRIME_Z)),
                     x3,
                     y3,
                     z3,
                 );
         }
 
-        let a4 = xAFlipMask1 + a1;
+        let a4 = xa_flip_mask1 + a1;
         if a4 > 0.0 {
-            let x4 = (xNMask | 1) as f32 + x1;
+            let x4 = (xnmask | 1) as f32 + x1;
             let y4 = y1;
             let z4 = z1;
             value += (a4 * a4)
                 * (a4 * a4)
                 * grad3(
                     seed2,
-                    xrbp + (Wrapping(xNMask as i64) & (Wrapping(PRIME_X) << 1)),
+                    xrbp + (Wrapping(xnmask as i64) & (Wrapping(PRIME_X) << 1)),
                     yrbp + Wrapping(PRIME_Y),
                     zrbp + Wrapping(PRIME_Z),
                     x4,
@@ -355,52 +315,52 @@ fn noise3_UnrotatedBase(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
     }
 
     let mut skip9 = false;
-    let a6 = yAFlipMask0 + a0;
+    let a6 = ya_flip_mask0 + a0;
     if a6 > 0.0 {
         let x6 = x0;
-        let y6 = y0 - (yNMask | 1) as f32;
+        let y6 = y0 - (ynmask | 1) as f32;
         let z6 = z0;
         value += (a6 * a6)
             * (a6 * a6)
             * grad3(
                 seed,
-                xrbp + (Wrapping(xNMask as i64) & Wrapping(PRIME_X)),
-                yrbp + (Wrapping(!yNMask as i64) & Wrapping(PRIME_Y)),
-                zrbp + (Wrapping(zNMask as i64) & Wrapping(PRIME_Z)),
+                xrbp + (Wrapping(xnmask as i64) & Wrapping(PRIME_X)),
+                yrbp + (Wrapping(!ynmask as i64) & Wrapping(PRIME_Y)),
+                zrbp + (Wrapping(znmask as i64) & Wrapping(PRIME_Z)),
                 x6,
                 y6,
                 z6,
             );
     } else {
-        let a7 = xAFlipMask0 + zAFlipMask0 + a0;
+        let a7 = xa_flip_mask0 + za_flip_mask0 + a0;
         if a7 > 0.0 {
-            let x7 = x0 - (xNMask | 1) as f32;
+            let x7 = x0 - (xnmask | 1) as f32;
             let y7 = y0;
-            let z7 = z0 - (zNMask | 1) as f32;
+            let z7 = z0 - (znmask | 1) as f32;
             value += (a7 * a7)
                 * (a7 * a7)
                 * grad3(
                     seed,
-                    xrbp + (Wrapping(!xNMask as i64) & Wrapping(PRIME_X)),
-                    yrbp + (Wrapping(yNMask as i64) & Wrapping(PRIME_Y)),
-                    zrbp + (Wrapping(!zNMask as i64) & Wrapping(PRIME_Z)),
+                    xrbp + (Wrapping(!xnmask as i64) & Wrapping(PRIME_X)),
+                    yrbp + (Wrapping(ynmask as i64) & Wrapping(PRIME_Y)),
+                    zrbp + (Wrapping(!znmask as i64) & Wrapping(PRIME_Z)),
                     x7,
                     y7,
                     z7,
                 );
         }
 
-        let a8 = yAFlipMask1 + a1;
+        let a8 = ya_flip_mask1 + a1;
         if a8 > 0.0 {
             let x8 = x1;
-            let y8 = (yNMask | 1) as f32 + y1;
+            let y8 = (ynmask | 1) as f32 + y1;
             let z8 = z1;
             value += (a8 * a8)
                 * (a8 * a8)
                 * grad3(
                     seed2,
                     xrbp + Wrapping(PRIME_X),
-                    yrbp + (Wrapping(yNMask as i64) & (Wrapping(PRIME_Y) << 1)),
+                    yrbp + (Wrapping(ynmask as i64) & (Wrapping(PRIME_Y) << 1)),
                     zrbp + Wrapping(PRIME_Z),
                     x8,
                     y8,
@@ -410,75 +370,75 @@ fn noise3_UnrotatedBase(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
         }
     }
 
-    let mut skipD = false;
-    let aA = zAFlipMask0 + a0;
-    if aA > 0.0 {
-        let xA = x0;
-        let yA = y0;
-        let zA = z0 - (zNMask | 1) as f32;
-        value += (aA * aA)
-            * (aA * aA)
+    let mut skipd = false;
+    let aa = za_flip_mask0 + a0;
+    if aa > 0.0 {
+        let xa = x0;
+        let ya = y0;
+        let za = z0 - (znmask | 1) as f32;
+        value += (aa * aa)
+            * (aa * aa)
             * grad3(
                 seed,
-                xrbp + (Wrapping(xNMask as i64) & Wrapping(PRIME_X)),
-                yrbp + (Wrapping(yNMask as i64) & Wrapping(PRIME_Y)),
-                zrbp + (Wrapping(!zNMask as i64) & Wrapping(PRIME_Z)),
-                xA,
-                yA,
-                zA,
+                xrbp + (Wrapping(xnmask as i64) & Wrapping(PRIME_X)),
+                yrbp + (Wrapping(ynmask as i64) & Wrapping(PRIME_Y)),
+                zrbp + (Wrapping(!znmask as i64) & Wrapping(PRIME_Z)),
+                xa,
+                ya,
+                za,
             );
     } else {
-        let aB = xAFlipMask0 + yAFlipMask0 + a0;
-        if aB > 0.0 {
-            let xB = x0 - (xNMask | 1) as f32;
-            let yB = y0 - (yNMask | 1) as f32;
-            let zB = z0;
-            value += (aB * aB)
-                * (aB * aB)
+        let ab = xa_flip_mask0 + ya_flip_mask0 + a0;
+        if ab > 0.0 {
+            let xb = x0 - (xnmask | 1) as f32;
+            let yb = y0 - (ynmask | 1) as f32;
+            let zb = z0;
+            value += (ab * ab)
+                * (ab * ab)
                 * grad3(
                     seed,
-                    xrbp + (Wrapping(!xNMask as i64) & Wrapping(PRIME_X)),
-                    yrbp + (Wrapping(!yNMask as i64) & Wrapping(PRIME_Y)),
-                    zrbp + (Wrapping(zNMask as i64) & Wrapping(PRIME_Z)),
-                    xB,
-                    yB,
-                    zB,
+                    xrbp + (Wrapping(!xnmask as i64) & Wrapping(PRIME_X)),
+                    yrbp + (Wrapping(!ynmask as i64) & Wrapping(PRIME_Y)),
+                    zrbp + (Wrapping(znmask as i64) & Wrapping(PRIME_Z)),
+                    xb,
+                    yb,
+                    zb,
                 );
         }
 
-        let aC = zAFlipMask1 + a1;
-        if aC > 0.0 {
-            let xC = x1;
-            let yC = y1;
-            let zC = (zNMask | 1) as f32 + z1;
-            value += (aC * aC)
-                * (aC * aC)
+        let ac = za_flip_mask1 + a1;
+        if ac > 0.0 {
+            let xc = x1;
+            let yc = y1;
+            let zc = (znmask | 1) as f32 + z1;
+            value += (ac * ac)
+                * (ac * ac)
                 * grad3(
                     seed2,
                     xrbp + Wrapping(PRIME_X),
                     yrbp + Wrapping(PRIME_Y),
-                    zrbp + (Wrapping(zNMask as i64) & (Wrapping(PRIME_Z) << 1)),
-                    xC,
-                    yC,
-                    zC,
+                    zrbp + (Wrapping(znmask as i64) & (Wrapping(PRIME_Z) << 1)),
+                    xc,
+                    yc,
+                    zc,
                 );
-            skipD = true;
+            skipd = true;
         }
     }
 
     if !skip5 {
-        let a5 = yAFlipMask1 + zAFlipMask1 + a1;
+        let a5 = ya_flip_mask1 + za_flip_mask1 + a1;
         if a5 > 0.0 {
             let x5 = x1;
-            let y5 = (yNMask | 1) as f32 + y1;
-            let z5 = (zNMask | 1) as f32 + z1;
+            let y5 = (ynmask | 1) as f32 + y1;
+            let z5 = (znmask | 1) as f32 + z1;
             value += (a5 * a5)
                 * (a5 * a5)
                 * grad3(
                     seed2,
                     xrbp + Wrapping(PRIME_X),
-                    yrbp + (Wrapping(yNMask as i64) & (Wrapping(PRIME_Y) << 1)),
-                    zrbp + (Wrapping(zNMask as i64) & (Wrapping(PRIME_Z) << 1)),
+                    yrbp + (Wrapping(ynmask as i64) & (Wrapping(PRIME_Y) << 1)),
+                    zrbp + (Wrapping(znmask as i64) & (Wrapping(PRIME_Z) << 1)),
                     x5,
                     y5,
                     z5,
@@ -487,18 +447,18 @@ fn noise3_UnrotatedBase(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
     }
 
     if !skip9 {
-        let a9 = xAFlipMask1 + zAFlipMask1 + a1;
+        let a9 = xa_flip_mask1 + za_flip_mask1 + a1;
         if a9 > 0.0 {
-            let x9 = (xNMask | 1) as f32 + x1;
+            let x9 = (xnmask | 1) as f32 + x1;
             let y9 = y1;
-            let z9 = (zNMask | 1) as f32 + z1;
+            let z9 = (znmask | 1) as f32 + z1;
             value += (a9 * a9)
                 * (a9 * a9)
                 * grad3(
                     seed2,
-                    xrbp + (Wrapping(xNMask as i64) & (Wrapping(PRIME_X) << 1)),
+                    xrbp + (Wrapping(xnmask as i64) & (Wrapping(PRIME_X) << 1)),
                     yrbp + Wrapping(PRIME_Y),
-                    zrbp + (Wrapping(zNMask as i64) & (Wrapping(PRIME_Z) << 1)),
+                    zrbp + (Wrapping(znmask as i64) & (Wrapping(PRIME_Z) << 1)),
                     x9,
                     y9,
                     z9,
@@ -506,32 +466,28 @@ fn noise3_UnrotatedBase(seed: i64, xr: f64, yr: f64, zr: f64) -> f32 {
         }
     }
 
-    if !skipD {
-        let aD = xAFlipMask1 + yAFlipMask1 + a1;
-        if aD > 0.0 {
-            let xD = (xNMask | 1) as f32 + x1;
-            let yD = (yNMask | 1) as f32 + y1;
-            let zD = z1;
-            value += (aD * aD)
-                * (aD * aD)
+    if !skipd {
+        let ad = xa_flip_mask1 + ya_flip_mask1 + a1;
+        if ad > 0.0 {
+            let xd = (xnmask | 1) as f32 + x1;
+            let yd = (ynmask | 1) as f32 + y1;
+            let zd = z1;
+            value += (ad * ad)
+                * (ad * ad)
                 * grad3(
                     seed2,
-                    xrbp + (Wrapping(xNMask as i64) & (Wrapping(PRIME_X) << 1)),
-                    yrbp + (Wrapping(yNMask as i64) & (Wrapping(PRIME_Y) << 1)),
+                    xrbp + (Wrapping(xnmask as i64) & (Wrapping(PRIME_X) << 1)),
+                    yrbp + (Wrapping(ynmask as i64) & (Wrapping(PRIME_Y) << 1)),
                     zrbp + Wrapping(PRIME_Z),
-                    xD,
-                    yD,
-                    zD,
+                    xd,
+                    yd,
+                    zd,
                 );
         }
     }
 
     value
 }
-
-/*
-    Utility
-*/
 
 fn grad2(seed: Wrapping<i64>, xsvp: Wrapping<i64>, ysvp: Wrapping<i64>, dx: f32, dy: f32) -> f32 {
     let mut hash = seed ^ xsvp ^ ysvp;
@@ -557,7 +513,7 @@ fn grad3(
     GRADIENTS_3D[gi | 0] * dx + GRADIENTS_3D[gi | 1] * dy + GRADIENTS_3D[gi | 2] * dz
 }
 
-fn fastFloor(x: f64) -> i32 {
+fn fast_floor(x: f64) -> i32 {
     let xi = x as i32;
     if x < xi as f64 {
         xi - 1
