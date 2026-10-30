@@ -1,9 +1,11 @@
 mod coordinates;
 mod direction;
+mod screenshot;
 
 use crate::{
     coordinates::{ChunkCoord, VoxelCoord},
     direction::Direction,
+    screenshot::ScreenshotPlugin,
 };
 
 use std::{mem, ops::{Index, IndexMut}};
@@ -208,6 +210,7 @@ fn main() -> AppExit {
             DefaultPlugins,
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            ScreenshotPlugin::default(),
         ))
         .init_resource::<VoxelWorld>()
         .init_resource::<CameraSettings>()

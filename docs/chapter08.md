@@ -48,6 +48,29 @@ However, `NeedsRemesh` seems like a very natural fit for ECS. We anyway already 
 
 Remember that, if we modify a voxel on the edge of a chunk, we also need to modify the neighbouring chunk.
 
+### Async tasks
+
+We don't want to block the main thread while meshing chunks, which would otherwise cause stuttering.
+For this we use [async tasks](https://bevy.org/examples/async-tasks/async-channel-pattern).
+Async tasks run in a separate thread, which means the main game loop can continue while the mesh is being built, possibly across multiple frames.
+
+A task cannot borrow the `VoxelWorld`, because the main thread keeps modifying it.
+Instead, the task gets shared handles to everything it needs: the chunk, its four neighbours (to hide faces on the chunk border), and a copy of the atlas layout.
+To make this cheap the world stores chunks as `Arc<ChunkData>`, so handing a chunk to a task only copies a pointer, not the voxels.
+When the main thread modifies a chunk it uses `Arc::make_mut`.
+This is 'copy-on-write': the voxels are only copied if a task is still reading that chunk, so the task always sees a consistent snapshot, and in the common case nothing is copied at all.
+That is also why `build_mesh` no longer takes the world, but only the neighbouring chunk data.
+
+The process now has two steps, each its own system:
+
+1. `remesh_chunks` finds chunks marked with `NeedsRemesh`, removes the marker, and spawns a task whose result is stored in a `MeshTask` component.
+2. `poll_mesh_tasks` checks every `MeshTask` each frame without blocking (`future::poll_once`). Once a task is finished, the mesh is inserted into the assets (or replaces the existing one) and the `MeshTask` is removed.
+
+Some details follow from this:
+- A chunk is only meshed by one task at a time. If a voxel changes while its task is running, `NeedsRemesh` is added again, but `remesh_chunks` ignores chunks that still have a `MeshTask`. The finished (now slightly stale) mesh is applied, after which the chunk is meshed again with the newest data.
+- If a chunk is unloaded, its entity is despawned. This drops the `MeshTask`, which cancels the task.
+- Meshes now appear a frame or more after the change, so there can be a short delay before an edit becomes visible.
+
 ### Entity events
 
 TODO: it seems that bevy has tables of entities, grouping them by their components. That means this entity moves around by adding and removing the NeedsRemesh component.

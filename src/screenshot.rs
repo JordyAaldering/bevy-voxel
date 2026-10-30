@@ -13,7 +13,7 @@ pub struct ScreenshotPlugin(
 );
 
 #[derive(Resource)]
-pub struct ScreenshotConfig(PathBuf);
+struct ScreenshotConfig(PathBuf);
 
 impl Plugin for ScreenshotPlugin {
     fn build(&self, app: &mut App) {
@@ -23,7 +23,7 @@ impl Plugin for ScreenshotPlugin {
 }
 
 /// Captures the whole window, including egui and the dock, when F12 is pressed.
-pub fn take_screenshot(
+fn take_screenshot(
     keys: Res<ButtonInput<KeyCode>>,
     config: Res<ScreenshotConfig>,
     mut commands: Commands,

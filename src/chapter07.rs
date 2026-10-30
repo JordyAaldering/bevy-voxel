@@ -2,12 +2,14 @@ mod axis;
 mod coordinates;
 mod direction;
 mod meshdata;
+mod screenshot;
 
 use crate::{
     axis::Axis,
     coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
     direction::Direction,
     meshdata::MeshData,
+    screenshot::ScreenshotPlugin,
 };
 
 use std::ops::{Index, IndexMut};
@@ -77,7 +79,7 @@ struct CameraSettings {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum VoxelType {
+pub enum VoxelType {
     Air,
     Grass,
     Dirt,
@@ -111,11 +113,18 @@ impl VoxelType {
     }
 }
 
-struct ChunkData {
+#[derive(Clone)]
+pub struct ChunkData {
     voxels: [VoxelType; CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_WIDTH],
 }
 
 impl ChunkData {
+    fn new(coord: ChunkCoord, entity: Entity) -> Self {
+        Self {
+            voxels: [VoxelType::Air; _],
+        }
+    }
+
     fn get_neighbor_voxel(&self, pos: VoxelCoord, direction: Direction) -> Option<VoxelType> {
         let neighbor_pos = pos + direction;
         if neighbor_pos.in_bounds() {
@@ -191,6 +200,7 @@ fn main() -> AppExit {
                 .set(ImagePlugin::default_nearest()),
             EguiPlugin::default(),
             WorldInspectorPlugin::default(),
+            ScreenshotPlugin::default(),
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
@@ -291,7 +301,7 @@ fn spawn_world(
 }
 
 fn generate_chunk(chunk_x: i32, chunk_z: i32) -> ChunkData {
-    let mut chunk = ChunkData { voxels: [VoxelType::Air; _] };
+    let mut chunk = ChunkData::new();
 
     for z in 0..CHUNK_WIDTH {
         let max_y = (chunk_x + chunk_z) as usize % CHUNK_HEIGHT;
