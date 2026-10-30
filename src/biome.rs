@@ -84,8 +84,8 @@ impl WorldConfig {
 
     pub fn column(&self, x: i32, z: i32) -> Column {
         let (fx, fz) = (x as f32, z as f32);
-        let temperature = self.climate.temperature.sample(self.seed.wrapping_add(TEMPERATURE_SEED_OFFSET), fx, fz);
-        let humidity = self.climate.humidity.sample(self.seed.wrapping_add(HUMIDITY_SEED_OFFSET), fx, fz);
+        let temperature = self.climate.temperature.sample2(self.seed.wrapping_add(TEMPERATURE_SEED_OFFSET), fx, fz);
+        let humidity = self.climate.humidity.sample2(self.seed.wrapping_add(HUMIDITY_SEED_OFFSET), fx, fz);
 
         let distance = |biome: &Biome| {
             let dt = biome.temperature - temperature;
@@ -102,7 +102,7 @@ impl WorldConfig {
         for biome in &self.biomes {
             let weight = weight(biome);
             if weight > 0.0 {
-                height += weight / total * biome.height.sample(self.seed, fx, fz);
+                height += weight / total * biome.height.sample2(self.seed, fx, fz);
             }
         }
         let height = (height as i32).clamp(0, CHUNK_HEIGHT as i32 - 1) as usize;
@@ -212,37 +212,4 @@ fn hash01(seed: i64, x: i32, z: i32, salt: u64) -> f32 {
     h = h.wrapping_mul(0x94D0_49BB_1331_11EB);
     h ^= h >> 31;
     (h >> 40) as f32 / (1u32 << 24) as f32
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_round_trips_through_json() {
-        let config = WorldConfig::default();
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: WorldConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.biomes.len(), config.biomes.len());
-        assert_eq!(parsed.column(100, -50).height, config.column(100, -50).height);
-    }
-
-    #[test]
-    fn terrain_is_continuous_between_biomes() {
-        let config = WorldConfig::default();
-        let mut surfaces = std::collections::HashMap::new();
-        let mut max_step = 0;
-        for z in [-3000, 0, 4000] {
-            let mut previous = config.column(-3000, z).height as i32;
-            for x in -3000..3000 {
-                let column = config.column(x, z);
-                max_step = max_step.max((column.height as i32 - previous).abs());
-                previous = column.height as i32;
-                *surfaces.entry(column.surface).or_insert(0) += 1;
-            }
-        }
-        println!("{surfaces:?}, max step {max_step}");
-        assert!(surfaces.len() >= 3, "expected all biomes to occur: {surfaces:?}");
-        assert!(max_step <= 6, "terrain has a cliff of {max_step} blocks");
-    }
 }

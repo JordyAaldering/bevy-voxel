@@ -1,25 +1,32 @@
 mod opensimplex2s;
 
 use bevy::math::Vec2;
-use serde::{Deserialize, Serialize};
 
 /// The underlying noise algorithm.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum NoiseType {
     #[default]
     OpenSimplex2S,
 }
 
 impl NoiseType {
-    fn sample(self, seed: i64, x: f64, y: f64) -> f64 {
+    fn sample2(self, seed: i64, x: f64, z: f64) -> f32 {
         match self {
-            Self::OpenSimplex2S => opensimplex2s::noise2d(seed, x, y),
+            Self::OpenSimplex2S => opensimplex2s::noise2(seed, x, z),
+        }
+    }
+
+    fn sample3(self, seed: i64, x: f64, y: f64, z: f64) -> f32 {
+        match self {
+            Self::OpenSimplex2S => opensimplex2s::noise3(seed, x, y, z),
         }
     }
 }
 
 /// Configuration of fractal noise, independent of seed and size.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct NoiseSettings {
     /// The underlying noise algorithm.
@@ -68,28 +75,54 @@ impl Default for NoiseSettings {
 
 impl NoiseSettings {
     /// Samples fractal noise at the given world position.
-    pub fn sample(&self, seed: i64, x: f32, z: f32) -> f32 {
-        let x = (x + self.offset.x) as f64;
-        let z = (z + self.offset.y) as f64;
+    pub fn sample2(&self, seed: i64, x: f32, z: f32) -> f32 {
+        let x = x + self.offset.x;
+        let z = z + self.offset.y;
 
-        let mut frequency = self.frequency as f64;
-        let mut amplitude = 1.0f64;
+        let mut frequency = self.frequency;
+        let mut amplitude = 1.0;
         let mut total = 0.0;
         let mut max = 0.0;
 
         for octave in 0..self.octaves {
-            // Decorrelate octaves by giving each its own seed.
+            // Decorrelate octaves by giving each its own seed
             let octave_seed = seed.wrapping_add(octave as i64);
-            total += amplitude * self.noise_type.sample(octave_seed, x * frequency, z * frequency);
+            total += amplitude * self.noise_type.sample2(octave_seed, (x * frequency) as f64, (z * frequency) as f64);
             max += amplitude;
-            amplitude *= self.persistence as f64;
-            frequency *= self.lacunarity as f64;
+            amplitude *= self.persistence;
+            frequency *= self.lacunarity;
         }
 
         if max == 0.0 {
-            return self.bias;
+            self.bias
+        } else {
+            (total / max) as f32 * self.amplitude + self.bias
         }
-        (total / max) as f32 * self.amplitude + self.bias
+    }
+
+    pub fn sample3(&self, seed: i64, x: f32, y: f32, z: f32) -> f32 {
+        let x = x + self.offset.x;
+        let z = z + self.offset.y;
+
+        let mut frequency = self.frequency;
+        let mut amplitude = 1.0;
+        let mut total = 0.0;
+        let mut max = 0.0;
+
+        for octave in 0..self.octaves {
+            // Decorrelate octaves by giving each its own seed
+            let octave_seed = seed.wrapping_add(octave as i64);
+            total += amplitude * self.noise_type.sample3(octave_seed, (x * frequency) as f64, (y * frequency) as f64, (z * frequency) as f64);
+            max += amplitude;
+            amplitude *= self.persistence;
+            frequency *= self.lacunarity;
+        }
+
+        if max == 0.0 {
+            self.bias
+        } else {
+            (total / max) as f32 * self.amplitude + self.bias
+        }
     }
 }
 

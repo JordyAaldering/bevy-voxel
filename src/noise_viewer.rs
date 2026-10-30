@@ -62,7 +62,7 @@ fn render(viewer: &Viewer, image: &mut Image) {
 
     for y in 0..SIZE {
         for x in 0..SIZE {
-            let value = viewer.settings.sample(viewer.seed, x as f32 - half, y as f32 - half);
+            let value = viewer.settings.sample2(viewer.seed, x as f32 - half, y as f32 - half);
             let t = ((value - viewer.settings.bias) / range * 0.5 + 0.5).clamp(0.0, 1.0);
             let v = (t * 255.0) as u8;
             data.extend_from_slice(&[v, v, v, 255]);

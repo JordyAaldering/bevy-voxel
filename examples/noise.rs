@@ -14,7 +14,7 @@ fn main() {
             let nx = x as f64 / 100.0;
             let ny = y as f64 / 100.0;
 
-            let value = opensimplex2s::noise2d(0, nx, ny);
+            let value = opensimplex2s::noise2(0, nx, ny);
 
             // Map [-1, 1] -> [0, 255]
             let value = ((value + 1.0) * 0.5 * 255.0) as u8;
