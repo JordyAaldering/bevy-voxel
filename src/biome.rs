@@ -150,7 +150,7 @@ impl Default for WorldConfig {
             climate: Climate {
                 temperature: climate_noise,
                 humidity: climate_noise,
-                blend: 0.25,
+                blend: 0.1,
             },
             biomes: vec![
                 Biome {
