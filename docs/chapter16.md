@@ -2,9 +2,10 @@
 
 Finally, we can start _sprucing_ up our world!
 
-
 Structures can write into adjacent chunks, so meshing must wait until nearby structures have been placed.
 Optional `direction` field is stored in the structure format but is not yet applied.
+
+TODO: variants, so we can have variations of the same structure type, like different trees.
 
 ### Steps performed
 

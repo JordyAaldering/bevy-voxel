@@ -1,9 +1,10 @@
 mod opensimplex2s;
 
 use bevy::math::Vec2;
+use serde::{Deserialize, Serialize};
 
 /// The underlying noise algorithm.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NoiseType {
     #[default]
     OpenSimplex2S,
@@ -18,7 +19,8 @@ impl NoiseType {
 }
 
 /// Configuration of fractal noise, independent of seed and size.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NoiseSettings {
     /// The underlying noise algorithm.
     pub noise_type: NoiseType,

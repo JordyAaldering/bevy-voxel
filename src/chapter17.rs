@@ -1,5 +1,6 @@
 mod aabb;
 mod axis;
+mod biome;
 mod coordinates;
 mod direction;
 mod editor;
@@ -12,11 +13,11 @@ mod telemetry;
 mod voxel_atlas;
 
 use crate::{
+    biome::WorldConfig,
     coordinates::{ChunkCoord, VoxelCoord, WorldCoord},
     direction::Direction,
     editor::{EditorPlugin, EditorState},
     meshdata::MeshData,
-    noise::NoiseSettings,
     physics::PhysicsPlugin,
     raycast::VoxelHit,
     structure::Structure,
@@ -49,7 +50,7 @@ const CHUNK_HEIGHT: usize = 64;
 
 // Meshing a chunk needs structures generated in all 8 neighbours, which in turn need terrain in their
 // neighbours, so the outermost two rings of loaded chunks are not meshed.
-const CHUNK_LOAD_RADIUS: i32 = 3;
+const CHUNK_LOAD_RADIUS: i32 = 4;
 
 const STRUCTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/structures");
 
@@ -66,26 +67,6 @@ const INTERACTION_DISTANCE: f32 = 5.0;
 
 const SAVE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/world");
 const SETTINGS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/savedata/settings");
-
-#[derive(Resource)]
-struct TerrainConfig {
-    seed: i64,
-    height: NoiseSettings,
-}
-
-impl Default for TerrainConfig {
-    fn default() -> Self {
-        Self {
-            seed: 0,
-            height: NoiseSettings {
-                amplitude: 10.0,
-                frequency: 0.01,
-                bias: 20.0,
-                ..default()
-            },
-        }
-    }
-}
 
 /// Structures loaded from `assets/structures`.
 #[derive(Resource)]
@@ -128,7 +109,7 @@ struct EditorCamera;
 #[reflect(Resource, InspectorOptions)]
 #[serde(default)]
 struct CameraSettings {
-    #[default(5.0)]
+    #[default(10.0)]
     #[inspector(min = 0.1, max = 20.0)]
     move_speed: f32,
     #[default(7.0)]
@@ -599,7 +580,7 @@ fn main() -> AppExit {
         ))
         .init_resource::<GameMode>()
         .init_resource::<VoxelWorld>()
-        .init_resource::<TerrainConfig>()
+        .insert_resource(WorldConfig::load_or_create().unwrap_or_else(|e| panic!("Failed to load world config: {e}")))
         .insert_resource(Structures::load().unwrap_or_else(|e| panic!("Failed to load structures: {e}")))
         .insert_resource(CameraSettings::load())
         .register_type::<CameraSettings>()
@@ -657,15 +638,15 @@ fn spawn_global_illumination(mut commands: Commands) {
 fn spawn_player(
     mut commands: Commands,
     editor_state: Res<EditorState>,
-    config: Res<TerrainConfig>,
+    config: Res<WorldConfig>,
 ) {
     let save = WorldSave::load();
     let position = save
         .as_ref()
         .map(|save| Vec3::from(save.player_position))
         .unwrap_or_else(|| {
-            let world_height = config.height.sample(config.seed, 0.0, 0.0);
-            Vec3::new(1.5, world_height as f32 + 1.0, 1.5)
+            let world_height = config.column(0, 0).height;
+            Vec3::new(0.5, world_height as f32 + 1.0, 0.5)
         });
     let rotation = save
         .as_ref()
@@ -744,50 +725,44 @@ fn spawn_chunks_around_player(
     }
 }
 
-/// Height of the top-most (grass) voxel at the given world column.
-fn terrain_height(config: &TerrainConfig, world_x: i32, world_z: i32) -> usize {
-    let height = config.height.sample(config.seed, world_x as f32, world_z as f32) as i32;
-    (height as usize).clamp(0, CHUNK_HEIGHT - 1)
-}
+const SUBSURFACE_DEPTH: usize = 2;
 
-fn generate_chunk_height(chunk: &mut ChunkData, config: &TerrainConfig) {
+fn generate_chunk_height(chunk: &mut ChunkData, config: &WorldConfig) {
     for x in 0..CHUNK_WIDTH {
         let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
 
         for z in 0..CHUNK_WIDTH {
             let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-            let height = terrain_height(config, world_x, world_z);
+            let column = config.column(world_x, world_z);
+            let height = column.height;
 
-            // Top layer is grass
-            chunk[VoxelCoord::new(x, height, z)] = VoxelType::Grass;
-            // Two layers of dirt
-            for y in (height - 2).max(0)..height {
-                chunk[VoxelCoord::new(x, y, z)] = VoxelType::Dirt;
+            chunk[VoxelCoord::new(x, height, z)] = column.surface;
+            for y in height.saturating_sub(SUBSURFACE_DEPTH)..height {
+                chunk[VoxelCoord::new(x, y, z)] = column.subsurface;
             }
             // Below that is stone
-            for y in 0..(height - 2).max(0) {
+            for y in 0..height.saturating_sub(SUBSURFACE_DEPTH) {
                 chunk[VoxelCoord::new(x, y, z)] = VoxelType::Stone;
             }
         }
     }
 }
 
-fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &TerrainConfig, structures: &Structures) {
-    /// Local (x, z) columns of each chunk that get a tree: one in the middle, and one in the corner
-    /// whose leaves overflow into three neighbouring chunks.
-    const TREE_COLUMNS: [(usize, usize); 2] = [
-        (CHUNK_WIDTH / 2, CHUNK_WIDTH / 2),
-        (CHUNK_WIDTH - 1, CHUNK_WIDTH - 1),
-    ];
-
-    for (x, z) in TREE_COLUMNS {
+fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &WorldConfig, structures: &Structures) {
+    for x in 0..CHUNK_WIDTH {
         let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
-        let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-        // Trees stand on top of the grass
-        let world_y = terrain_height(config, world_x, world_z) as i32 + 1;
-        world.place_structure(&structures.tree, WorldCoord::new(world_x, world_y, world_z));
+        for z in 0..CHUNK_WIDTH {
+            let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+            let column = config.column(world_x, world_z);
+            if config.has_tree(&column, world_x, world_z) {
+                // Trees stand on top of the surface
+                let world_y = column.height as i32 + 1;
+                world.place_structure(&structures.tree, WorldCoord::new(world_x, world_y, world_z));
+            }
+        }
     }
 }
 
@@ -851,7 +826,7 @@ fn on_chunk_data_changed(
     chunks: Query<&Chunk>,
     mut world: ResMut<VoxelWorld>,
     mut commands: Commands,
-    config: Res<TerrainConfig>,
+    config: Res<WorldConfig>,
     structures: Res<Structures>,
 ) {
     // May be None if the chunk was despawned before the event was processed
