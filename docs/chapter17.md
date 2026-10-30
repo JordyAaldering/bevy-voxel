@@ -14,6 +14,7 @@ The order matters.
 
 Caves can be generated almost separately, though it has to be before we place structures so we don't place trees in the air when a cave later carves out the ground below it.
 Similarly for rivers.
+For caves we can use the 3D simplex noise algorithm.
 
 ## Biomes
 
