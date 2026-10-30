@@ -1,4 +1,4 @@
-mod opensimplex2s;
+pub mod opensimplex2s;
 pub mod voronoi;
 
 use bevy::math::Vec2;

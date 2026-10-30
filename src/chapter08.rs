@@ -351,7 +351,7 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
             Name::new("Player"),
             Player::default(),
-            Transform::from_xyz(1.5, 5.0, 1.5),
+            Transform::from_xyz(0.5, 5.0, 0.5),
         ))
         .with_children(|commands| {
             commands.spawn((
@@ -432,7 +432,6 @@ fn build_mesh(chunk: &ChunkData, neighbors: &ChunkNeighbors, atlas: &TextureAtla
 }
 
 fn is_face_visible(chunk: &ChunkData, neighbors: &ChunkNeighbors, voxel_pos: VoxelCoord, direction: Direction) -> bool {
-
     if let Some(neighbor) = chunk.get_neighbor_voxel(voxel_pos, direction) {
         return neighbor.is_transparent();
     }
@@ -443,7 +442,7 @@ fn is_face_visible(chunk: &ChunkData, neighbors: &ChunkNeighbors, voxel_pos: Vox
     };
 
     // If the chunk does not exist, we assume it is empty and show the face
-    let Some(neighbor_chunk) = &neighbors[compass]  else {
+    let Some(neighbor_chunk) = &neighbors[compass] else {
         return true;
     };
 
