@@ -1,4 +1,5 @@
 mod opensimplex2s;
+mod voronoi;
 
 use bevy::math::Vec2;
 
@@ -8,18 +9,22 @@ use bevy::math::Vec2;
 pub enum NoiseType {
     #[default]
     OpenSimplex2S,
+    /// Distance to the nearest of randomly placed points; gives cell-like patterns.
+    Voronoi,
 }
 
 impl NoiseType {
     fn sample2(self, seed: i64, x: f64, z: f64) -> f32 {
         match self {
             Self::OpenSimplex2S => opensimplex2s::noise2(seed, x, z),
+            Self::Voronoi => voronoi::noise2(seed, x, z),
         }
     }
 
     fn sample3(self, seed: i64, x: f64, y: f64, z: f64) -> f32 {
         match self {
             Self::OpenSimplex2S => opensimplex2s::noise3(seed, x, y, z),
+            Self::Voronoi => voronoi::noise3(seed, x, y, z),
         }
     }
 }

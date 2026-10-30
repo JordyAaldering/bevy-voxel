@@ -800,11 +800,11 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig) {
 }
 
 fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &WorldConfig, structures: &Structures) {
-    for x in 0..CHUNK_WIDTH {
-        let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
+    for z in 0..CHUNK_WIDTH {
+        let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
 
-        for z in 0..CHUNK_WIDTH {
-            let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
+        for x in 0..CHUNK_WIDTH {
+            let world_x = coord.x * CHUNK_WIDTH as i32 + x as i32;
 
             let column = config.column(world_x, world_z);
             if config.has_tree(&column, world_x, world_z) {

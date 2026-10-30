@@ -103,6 +103,9 @@ fn ui(
                 changed |= ui
                     .selectable_value(&mut s.noise_type, NoiseType::OpenSimplex2S, "OpenSimplex2S")
                     .changed();
+                changed |= ui
+                    .selectable_value(&mut s.noise_type, NoiseType::Voronoi, "Voronoi")
+                    .changed();
             });
 
         changed |= ui.add(egui::DragValue::new(&mut v.seed).prefix("Seed: ")).changed();
