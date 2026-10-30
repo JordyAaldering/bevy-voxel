@@ -29,10 +29,20 @@ Solving this is actually quite tricky, and needs some shader work, which probabl
    Keys are `all`, `top`, `bottom`, `sides`, `front`, `back`, `left`, `right`.
    Values are PNG names without extension.
    (Good thing we just implemented serialization...)
+
+   Some blocks have alternative looks, such as the two kinds of diamond ore.
+   Instead of a face description, such a voxel lists `variants`, each being a regular face description:
+   ```json
+   "stonediamond": { "variants": [ { "all": "stone_diamond" }, { "all": "stone_diamond_alt" } ] }
+   ```
+   Variants are a property of the texture, not of the voxel type: `StoneDiamond` stays a single `VoxelType`, so the chunk format and gameplay logic are unaffected.
+   Which variant a voxel shows is a hash of its world position (`variant_seed`) modulo the number of variants.
+   This is deterministic, so a voxel keeps its look when its chunk is remeshed or reloaded, and nothing has to be saved.
+   All faces of one voxel use the same variant, so a block never mixes looks.
 4. **Parse it with serde.** `FaceSpec` has one `Option<String>` per key (`deny_unknown_fields`, so typos are errors).
    `FaceSpec::resolve(direction)` picks the most specific entry: the individual face, then `top`/`bottom` or `sides`, then `all`.
-   The file is read as `HashMap<VoxelType, FaceSpec>`.
-5. **Resolve and collect names.** For every solid voxel and each of the six directions, resolve the image name.
+   The file is read as `HashMap<VoxelType, VoxelSpec>`, where the untagged enum `VoxelSpec` is either a single `FaceSpec` or a list of `variants`.
+5. **Resolve and collect names.** For every solid voxel, each of its variants, and each of the six directions, resolve the image name.
    Missing entries or faces are reported as errors.
    Unique names are collected in a `BTreeSet`, which gives a deterministic order.
 6. **Load the images.** Each PNG is decoded with `Image::from_buffer` (sRGB, `ImageSampler::nearest()`) and added to `Assets<Image>`.
@@ -40,7 +50,7 @@ Solving this is actually quite tricky, and needs some shader work, which probabl
 7. **Pack the atlas.** Add every image to a `TextureAtlasBuilder` and call `build()`.
    This returns the `TextureAtlasLayout`, a `TextureAtlasSources` and the combined `Image`.
 8. **Build the lookup table.** `TextureAtlasSources::texture_index` maps each image handle to its index in the layout.
-   `VoxelAtlas { layout, faces }` stores `faces: [[usize; 6]; VoxelType::ALL.len()]`, indexed by voxel type and direction.
-   `VoxelAtlas::texture(voxel, direction)` replaces the old hardcoded `VoxelType::texture`, and the `ATLAS_*` constants are removed.
+   `VoxelAtlas { layout, faces }` stores `faces: Vec<Vec<[usize; 6]>>`, indexed by voxel type, variant, and direction.
+   `VoxelAtlas::texture(voxel, direction, variant_seed)` replaces the old hardcoded `VoxelType::texture`, and the `ATLAS_*` constants are removed.
 9. **Use it.** `setup_chunk_material` calls `build_voxel_atlas`, uses the resulting image as the material's `base_color_texture`, and inserts `VoxelAtlas` as a resource.
    `build_mesh` now takes `&VoxelAtlas`, and passes `atlas.layout` to `MeshData` for the UV calculation.
