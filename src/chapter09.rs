@@ -498,10 +498,6 @@ fn poll_mesh_tasks(
 
 /// Starts building the mesh of every chunk marked with [`NeedsRemesh`] on a background thread.
 /// A chunk that is still being meshed stays marked, and is meshed again once that task is done.
-///
-/// Note: when remesh_chunks is called on a chunk that is already being meshed, `Without<MeshTask>`
-/// prevents it from being remeshed again. This means that if a chunk is modified while it is being
-/// meshed, the changes will not be reflected in the mesh.
 fn remesh_chunks(
     mut commands: Commands,
     world: Res<VoxelWorld>,
