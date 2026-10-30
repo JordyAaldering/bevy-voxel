@@ -6,6 +6,7 @@ mod direction;
 mod editor;
 mod meshdata;
 mod noise;
+mod ore;
 mod physics;
 mod raycast;
 mod structure;
@@ -244,6 +245,7 @@ struct ChunkDataChanged {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, SchemaWrite, SchemaRead)]
 enum ChunkGenerationPhase {
     HeightGeneration,
+    OreGeneration,
     CaveGeneration,
     GenerateStructures,
     MeshGeneration,
@@ -253,7 +255,8 @@ enum ChunkGenerationPhase {
 impl ChunkGenerationPhase {
     fn next(self) -> Self {
         match self {
-            Self::HeightGeneration => Self::CaveGeneration,
+            Self::HeightGeneration => Self::OreGeneration,
+            Self::OreGeneration => Self::CaveGeneration,
             Self::CaveGeneration => Self::GenerateStructures,
             Self::GenerateStructures => Self::MeshGeneration,
             Self::MeshGeneration  => Self::Done,
@@ -265,6 +268,7 @@ impl ChunkGenerationPhase {
     fn neighbor_requirement(self) -> NeighborRequirement {
         match self {
             Self::HeightGeneration => NeighborRequirement::NONE,
+            Self::OreGeneration => NeighborRequirement::NONE,
             Self::CaveGeneration => NeighborRequirement::NONE,
             // Structures write into neighbors, including diagonal ones
             Self::GenerateStructures => NeighborRequirement { radius: 1, diagonal: true },
@@ -799,6 +803,27 @@ fn generate_caves(chunk: &mut ChunkData, config: &WorldConfig) {
     }
 }
 
+/// Replaces stone with ore. Only stone is replaced, so ores do not overwrite the surface.
+fn generate_ores(chunk: &mut ChunkData, config: &WorldConfig) {
+    for x in 0..CHUNK_WIDTH {
+        let world_x = chunk.coord.x * CHUNK_WIDTH as i32 + x as i32;
+
+        for z in 0..CHUNK_WIDTH {
+            let world_z = chunk.coord.z * CHUNK_WIDTH as i32 + z as i32;
+
+            for y in 0..CHUNK_HEIGHT {
+                let coord = VoxelCoord::new(x, y, z);
+                if chunk[coord] != VoxelType::Stone {
+                    continue;
+                }
+                if let Some(ore) = config.ore_at(world_x, y as i32, world_z) {
+                    chunk[coord] = ore;
+                }
+            }
+        }
+    }
+}
+
 fn generate_structures(world: &mut VoxelWorld, coord: ChunkCoord, config: &WorldConfig, structures: &Structures) {
     for z in 0..CHUNK_WIDTH {
         let world_z = coord.z * CHUNK_WIDTH as i32 + z as i32;
@@ -912,6 +937,15 @@ fn on_chunk_data_changed(
             if world.neighbors_ready_for(coord, phase) {
                 info!("Carving caves for chunk {}", coord);
                 generate_caves(&mut world[&chunk], &config);
+                true
+            } else {
+                false
+            }
+        }
+        ChunkGenerationPhase::OreGeneration => {
+            if world.neighbors_ready_for(coord, phase) {
+                info!("Placing ores for chunk {}", coord);
+                generate_ores(&mut world[&chunk], &config);
                 true
             } else {
                 false

@@ -30,11 +30,24 @@ pub fn noise2(seed: i64, x: f64, y: f64) -> f32 {
 
 /// 3D Voronoi noise in `[-1, 1]`: -1 at a feature point, rising towards 1 at cell borders.
 pub fn noise3(seed: i64, x: f64, y: f64, z: f64) -> f32 {
+    distance_to_noise(cell3(seed, x, y, z).distance)
+}
+
+/// The feature point closest to a position.
+pub struct Cell {
+    /// Distance to the feature point, in cells.
+    pub distance: f64,
+    /// Hash of the cell the feature point is in, for deriving random properties of that cell.
+    pub hash: i64,
+}
+
+/// Finds the nearest feature point in 3D. Cells are one unit wide.
+pub fn cell3(seed: i64, x: f64, y: f64, z: f64) -> Cell {
     let xb = x.floor() as i64;
     let yb = y.floor() as i64;
     let zb = z.floor() as i64;
 
-    let mut nearest = f64::INFINITY;
+    let mut nearest = Cell { distance: f64::INFINITY, hash: 0 };
     for dz in -1..=1 {
         for dy in -1..=1 {
             for dx in -1..=1 {
@@ -43,12 +56,14 @@ pub fn noise3(seed: i64, x: f64, y: f64, z: f64) -> f32 {
                 let px = cx as f64 + unit(hash);
                 let py = cy as f64 + unit(hash >> 16);
                 let pz = cz as f64 + unit(hash >> 32);
-                nearest = nearest.min((px - x) * (px - x) + (py - y) * (py - y) + (pz - z) * (pz - z));
+                let distance = ((px - x) * (px - x) + (py - y) * (py - y) + (pz - z) * (pz - z)).sqrt();
+                if distance < nearest.distance {
+                    nearest = Cell { distance, hash };
+                }
             }
         }
     }
-
-    distance_to_noise(nearest.sqrt())
+    nearest
 }
 
 /// Nearest-point distances are mostly below 1, so clamp there to fill `[-1, 1]`.

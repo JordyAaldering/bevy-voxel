@@ -22,7 +22,7 @@ For caves we can use the 3D simplex noise algorithm.
 
 ### Steps performed
 
-1. **Add a generation phase.** `ChunkGenerationPhase` gets a `CaveGeneration` phase between `HeightGeneration` and `GenerateStructures`, and `next()` is updated to match.
+1. **Add a generation phase.** `ChunkGenerationPhase` gets a `CaveGeneration` phase before `GenerateStructures` (ores are added before it later on), and `next()` is updated to match.
    Saved chunks store the phase by variant index, so chunks saved before this change are stale: delete `savedata/world/chunk_*.bin`.
 2. **Declare the neighbors each phase needs.** Phases do not all need the same chunks to be ready, so each phase now says which ones, using `ChunkGenerationPhase::neighbor_requirement()`.
    It returns a `NeighborRequirement { radius, diagonal }`: how many chunks away to look (0 is only the chunk itself), and whether chunks outside the same row or column count.
@@ -95,6 +95,37 @@ The challenge is that the transition between two biomes must not be a cliff.
 ## Ores
 
 Ores might depend on the biome, so they come after.
+
+### Steps performed
+
+1. **Define `Ore`** (`src/ore.rs`).
+   It has a `name`, the `voxel` that replaces stone, a `min_height` and `max_height` (world y, inclusive), a `rarity`, and a `cluster_size`.
+   Anything else (biome restrictions, vein shapes) can be added when it is needed.
+   `Ore` derives `Serialize` and `Deserialize`, and the list is stored in `WorldConfig::ores`, so every world can tune its own ores in `world.json`.
+2. **Create coal, iron, gold, and diamond** (`default_ores`).
+   They get rarer and deeper in this order, and the clusters of the rarer ores are smaller.
+   The voxel types (`StoneCoal` and so on) and their textures already existed.
+3. **Expose the nearest feature point of Voronoi noise.** `voronoi::noise3` only gives a distance, but ores also need to know _which_ cell a position is in.
+   `voronoi::cell3` returns the distance to the nearest feature point and a hash of the cell it belongs to, and `noise3` is now built on top of it.
+4. **Place clusters with it** (`Ore::contains`).
+   The position is divided by the cell size, which is `4 * cluster_size`, so cells are wide enough for their cluster to fit inside.
+   The hash of the nearest cell then decides two things, each with its own salt so they are independent: whether the cell has a cluster at all (`rarity` is the probability), and how large it is, between half and the full `cluster_size`.
+   A voxel is ore if it is within that radius of the feature point, which gives roughly spherical blobs at random places.
+   Positions outside the height range are rejected first, which also saves the noise lookup.
+5. **Seed each ore separately.** `WorldConfig::ore_at` gives every ore its own seed, derived from the world seed and its index, otherwise all ores would sit at the same cluster centers.
+   Where clusters of two ores overlap, the first one in the list wins.
+6. **Add `OreGeneration`.** It is a new `ChunkGenerationPhase` after `HeightGeneration` and before `CaveGeneration`.
+   Like height and caves it needs no neighbors, because `contains` is a pure function of the world position, so clusters continue across chunk borders.
+   It runs before the caves, so caves carve through ore like through any other stone, and cave walls can show ore, with no need to check for air.
+   It only replaces `Stone` voxels, so ore does not appear on the surface.
+   As with the caves, the phase indices changed, so delete `savedata/world/chunk_*.bin`.
+7. **Test it.** The tests check that every ore occurs, never outside its height range, that rarer ores are less common and ore is sparse overall, that ore voxels form clusters, and that the ores survive a JSON round trip.
+
+### Tuning
+
+- A cell is `4 * cluster_size` wide, so the same `rarity` gives fewer, but larger, clusters for a bigger `cluster_size`. Rarity is per cell, not per block.
+- With the defaults, coal is about 0.5% of the stone at heights 1 to 14, and diamond about 0.02%.
+- Clusters are cut off by the height range, so a wide range spreads one ore over more depth, and a narrow one makes it a layer.
 
 ## Trees and other structures
 

@@ -1,5 +1,5 @@
 mod opensimplex2s;
-mod voronoi;
+pub mod voronoi;
 
 use bevy::math::Vec2;
 

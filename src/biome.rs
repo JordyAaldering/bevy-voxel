@@ -1,4 +1,4 @@
-use crate::{CHUNK_HEIGHT, VoxelType, noise::NoiseSettings, write_atomic};
+use crate::{CHUNK_HEIGHT, VoxelType, noise::NoiseSettings, ore::Ore, write_atomic};
 
 use std::{fs, io, path::{Path, PathBuf}};
 
@@ -10,6 +10,7 @@ const TREE_SALT: u64 = 0x5452_4545;
 const TEMPERATURE_SEED_OFFSET: i64 = 0x7E57;
 const HUMIDITY_SEED_OFFSET: i64 = 0x4801;
 const CAVE_SEED_OFFSET: i64 = 0xCA7E;
+const ORE_SEED_OFFSET: i64 = 0x0E5;
 
 /// Terrain generation settings of a region of the world.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -55,6 +56,7 @@ pub struct WorldConfig {
     pub seed: i64,
     pub climate: Climate,
     pub caves: Caves,
+    pub ores: Vec<Ore>,
     pub biomes: Vec<Biome>,
 }
 
@@ -148,6 +150,17 @@ impl WorldConfig {
         self.caves.noise.sample3(seed, x as f32, y as f32, z as f32) > self.caves.threshold
     }
 
+    /// The ore voxel at this position, if any. The first ore in `ores` wins where clusters overlap.
+    pub fn ore_at(&self, x: i32, y: i32, z: i32) -> Option<VoxelType> {
+        self.ores.iter().enumerate()
+            .find(|(index, ore)| {
+                // Every ore has its own seed, so their clusters do not line up
+                let seed = self.seed.wrapping_add(ORE_SEED_OFFSET).wrapping_add((*index as i64 + 1).wrapping_mul(0x9E37_79B9));
+                ore.contains(seed, x, y, z)
+            })
+            .map(|(_, ore)| ore.voxel)
+    }
+
     /// Whether a tree grows in this column, given the column's biome.
     pub fn has_tree(&self, column: &Column, x: i32, z: i32) -> bool {
         hash01(self.seed, x, z, TREE_SALT) < column.tree_density
@@ -175,8 +188,14 @@ impl Default for WorldConfig {
                     frequency: 0.04,
                     ..default()
                 },
-                threshold: 0.5,
+                threshold: 0.45,
             },
+            ores: vec![
+                Ore { name: "coal".into(), voxel: VoxelType::StoneCoal, min_height: 5, max_height: 60, rarity: 0.2, cluster_size: 3.0 },
+                Ore { name: "iron".into(), voxel: VoxelType::StoneIron, min_height: 5, max_height: 45, rarity: 0.1, cluster_size: 3.0 },
+                Ore { name: "gold".into(), voxel: VoxelType::StoneGold, min_height: 3, max_height: 25, rarity: 0.03, cluster_size: 2.0 },
+                Ore { name: "diamond".into(), voxel: VoxelType::StoneDiamond, min_height: 1, max_height: 14, rarity: 0.01, cluster_size: 1.5 },
+            ],
             biomes: vec![
                 Biome {
                     name: "plains".into(),
